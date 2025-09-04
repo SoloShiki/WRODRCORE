@@ -8,43 +8,39 @@ class CmdVelDriver(Node):
         super().__init__('cmd_vel_driver')
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
 
-        # Timer: tick every 0.1s
+        # Timer: tick every 0.1s (10 Hz)
         self.timer = self.create_timer(0.1, self.update)
 
         # State machine
         self.state = "forward"
         self.state_start = self.get_clock().now()
 
-        self.get_logger().info('CmdVelDriver node started.')
-
     def update(self):
         now = self.get_clock().now()
         elapsed = (now - self.state_start).nanoseconds / 1e9  # seconds
-
         msg = Twist()
 
         if self.state == "forward":
             msg.linear.x = 0.2
             self.publisher.publish(msg)
-            if elapsed >= 10.0:  # 2m / 0.2 m/s = 10s
+            if elapsed >= 10.0:  # Move 2 m at 0.2 m/s
                 self.next_state("stop1")
 
         elif self.state == "stop1":
-            # stop
-            self.publisher.publish(msg)  # all zeros
+            self.publisher.publish(msg)  # all zeros = stop
             if elapsed >= 2.0:
                 self.next_state("turn")
 
         elif self.state == "turn":
-            msg.angular.z = 0.1
+            msg.angular.z = 0.1  # turn left
             self.publisher.publish(msg)
-            if elapsed >= math.radians(10) / 0.1:  # ~1.75s
+            if elapsed >= math.radians(10)/0.1:
                 self.next_state("stop2")
 
         elif self.state == "stop2":
-            self.publisher.publish(msg)  # stop again
+            self.publisher.publish(msg)  # stop
             if elapsed >= 2.0:
-                self.get_logger().info("Sequence complete.")
+                self.get_logger().info("Sequence finished")
                 self.destroy_node()
 
     def next_state(self, new_state):
