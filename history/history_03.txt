@@ -1,0 +1,16 @@
+ 1068  history -r history/history_03.txt
+ 1067  python3 subscriber.py
+ 1066  cd src/motion_test/scripts
+ 1065  cd ros2_emarte
+ 1064  cd /home/ubuntu/
+ 1063  clear
+ 1062  pwd
+ 1061  source setup.bash
+ 1060  ls
+ 1059  cd install
+ 1058  source install/setup.bash
+ 1054  tree
+ 1053  colcon build
+ 1052  mkdir scripts
+ 1050  cd motion_test
+ 1048  ros2 pkg create motion_test --build-type ament_cmake

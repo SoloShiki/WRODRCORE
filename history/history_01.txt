@@ -1,0 +1,16 @@
+ 1267  mkdir history
+ 1266  ls
+ 1265  history -r > history_01.txt
+ 1264  python3 publisher.py
+ 1262  cp -r  WROS_RD_ROS/1.\ Talker/* ./
+ 1261  git clone https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/
+ 1260  dir
+ 1259  cd scripts
+ 1258  ros2 topic list
+ 1257  ros2 node list
+ 1256  ros2 pkg list
+ 1254  source install/setup.zsh
+ 1253  source install/setup.bash
+ 1252  tree
+ 1250  colcon build
+ 1249  mkdir scripts

@@ -1,0 +1,16 @@
+ 1403  cd /home/ubuntu/ros2_emarte/src/motion_test/scripts
+ 1402  pwd
+ 1401  history -r > history_02.txt
+ 1400  ros2 topic echo /hello_world 
+ 1399  ros2 topic list
+ 1398  ros2 node list
+ 1397  clear
+ 1396  ros node list
+ 1394  cd /
+ 1392  python3 publisher.py
+ 1391  ls
+ 1389  cd scripts
+ 1388  cd talker_listen
+ 1385  cd src
+ 1383  cd ros2_emarte
+ 1382  cd ros2_
