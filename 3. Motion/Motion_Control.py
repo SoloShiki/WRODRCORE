@@ -2,45 +2,55 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 import math
-import time
 
 class CmdVelDriver(Node):
     def __init__(self):
         super().__init__('cmd_vel_driver')
         self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.timer = self.create_timer(5.0, self.drive_sequence)  # every 5 seconds
+
+        # Timer: tick every 0.1s
+        self.timer = self.create_timer(0.1, self.update)
+
+        # State machine
+        self.state = "forward"
+        self.state_start = self.get_clock().now()
+
         self.get_logger().info('CmdVelDriver node started.')
 
-    def drive_sequence(self):
-        # Step 1: Move forward 2 meters at 0.2 m/s
-        forward_msg = Twist()
-        forward_msg.linear.x = 0.2
-        self.publisher.publish(forward_msg)
-        self.get_logger().info('Moving forward...')
-        time.sleep(10)  # 2m / 0.2 m/s = 10s
+    def update(self):
+        now = self.get_clock().now()
+        elapsed = (now - self.state_start).nanoseconds / 1e9  # seconds
 
-        # Step 2: Stop
-        stop_msg = Twist()
-        forward_msg.linear.x = 0.0
-        self.publisher.publish(stop_msg)
-        self.get_logger().info('Stoping...')
-        time.sleep(2)
+        msg = Twist()
 
-        # Step 3: Turn 10° left at 0.1 rad/s
-        turn_msg = Twist()
-        turn_msg.angular.z = 0.1
-        turn_msg.angular.x = 0.1
-        self.publisher.publish(turn_msg)
-        self.get_logger().info('Turning left...')
-        time.sleep(math.radians(10) / 0.1)  # ≈1.75s
+        if self.state == "forward":
+            msg.linear.x = 0.2
+            self.publisher.publish(msg)
+            if elapsed >= 10.0:  # 2m / 0.2 m/s = 10s
+                self.next_state("stop1")
 
-         # Step 2: Stop
-        stop_msg = Twist()
-        turn_msg.angular.z = 0.0
-        turn_msg.angular.x = 0.0
-        self.publisher.publish(stop_msg)
-        self.get_logger().info('Stoping...')
-        time.sleep(2)
+        elif self.state == "stop1":
+            # stop
+            self.publisher.publish(msg)  # all zeros
+            if elapsed >= 2.0:
+                self.next_state("turn")
+
+        elif self.state == "turn":
+            msg.angular.z = 0.1
+            self.publisher.publish(msg)
+            if elapsed >= math.radians(10) / 0.1:  # ~1.75s
+                self.next_state("stop2")
+
+        elif self.state == "stop2":
+            self.publisher.publish(msg)  # stop again
+            if elapsed >= 2.0:
+                self.get_logger().info("Sequence complete.")
+                self.destroy_node()
+
+    def next_state(self, new_state):
+        self.state = new_state
+        self.state_start = self.get_clock().now()
+        self.get_logger().info(f"Switching to state: {new_state}")
 
 def main(args=None):
     rclpy.init(args=args)
