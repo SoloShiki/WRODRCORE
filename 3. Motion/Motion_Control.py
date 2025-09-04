@@ -1,47 +1,41 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
-import math
 
-class CmdVelDriver(Node):
+class SimpleMove(Node):
     def __init__(self):
-        super().__init__('cmd_vel_driver')
-        self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        super().__init__('simple_move')
+        # Use the MentorPi controller topic
+        self.publisher = self.create_publisher(Twist, '/controller/cmd_vel', 10)
 
-        # Timer: tick every 0.1s (10 Hz)
+        # Timer tick every 0.1s (10 Hz)
         self.timer = self.create_timer(0.1, self.update)
 
         # State machine
-        self.state = "forward"
+        self.state = "moving"
         self.state_start = self.get_clock().now()
+        self.get_logger().info('Robot starting movement for 3 seconds...')
 
     def update(self):
         now = self.get_clock().now()
         elapsed = (now - self.state_start).nanoseconds / 1e9  # seconds
         msg = Twist()
 
-        if self.state == "forward":
-            msg.linear.x = 0.2
+        if self.state == "moving":
+            msg.linear.x = 0.2  # forward speed
+            msg.angular.z = 0.0
             self.publisher.publish(msg)
-            if elapsed >= 10.0:  # Move 2 m at 0.2 m/s
-                self.next_state("stop1")
+            if elapsed >= 3.0:
+                self.next_state("stopped")
 
-        elif self.state == "stop1":
-            self.publisher.publish(msg)  # all zeros = stop
-            if elapsed >= 2.0:
-                self.next_state("turn")
-
-        elif self.state == "turn":
-            msg.angular.z = 0.1  # turn left
+        elif self.state == "stopped":
+            # Explicitly stop the robot
+            msg.linear.x = 0.0
+            msg.angular.z = 0.0
             self.publisher.publish(msg)
-            if elapsed >= math.radians(10)/0.1:
-                self.next_state("stop2")
-
-        elif self.state == "stop2":
-            self.publisher.publish(msg)  # stop
-            if elapsed >= 2.0:
-                self.get_logger().info("Sequence finished")
-                self.destroy_node()
+            # Cancel the timer to stop publishing
+            self.timer.cancel()
+            self.get_logger().info("Robot stopped. Sequence complete.")
 
     def next_state(self, new_state):
         self.state = new_state
@@ -50,8 +44,13 @@ class CmdVelDriver(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = CmdVelDriver()
+    node = SimpleMove()
     rclpy.spin(node)
+    # Before shutdown, ensure robot is stopped
+    stop_msg = Twist()
+    stop_msg.linear.x = 0.0
+    stop_msg.angular.z = 0.0
+    node.publisher.publish(stop_msg)
     node.destroy_node()
     rclpy.shutdown()
 
