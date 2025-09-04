@@ -21,19 +21,26 @@ class CmdVelDriver(Node):
 
         # Step 2: Stop
         stop_msg = Twist()
+        forward_msg.linear.x = 0.0
         self.publisher.publish(stop_msg)
-        time.sleep(1)
+        self.get_logger().info('Stoping...')
+        time.sleep(2)
 
         # Step 3: Turn 10° left at 0.1 rad/s
         turn_msg = Twist()
         turn_msg.angular.z = 0.1
+        turn_msg.angular.x = 0.1
         self.publisher.publish(turn_msg)
         self.get_logger().info('Turning left...')
         time.sleep(math.radians(10) / 0.1)  # ≈1.75s
 
-        # Step 4: Stop again
+         # Step 2: Stop
+        stop_msg = Twist()
+        turn_msg.angular.z = 0.0
+        turn_msg.angular.x = 0.0
         self.publisher.publish(stop_msg)
-        time.sleep(1)
+        self.get_logger().info('Stoping...')
+        time.sleep(2)
 
 def main(args=None):
     rclpy.init(args=args)
