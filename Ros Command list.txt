@@ -1,0 +1,74 @@
+sudo apt update
+sudo apt intslall tilix
+
+Ros humble
+https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html
+
+
+Examples:
+source /opt/ros/humble/setup.bash
+ros2 run demo_nodes_cpp talker
+
+source /opt/ros/humble/setup.bash
+ros2 run demo_nodes_py listener
+
+
+source /opt/ros/humble/setup.bash
+
+Install ?VSTUDIO
+sudo snap install code --classic
+
+Exntesions:
+python
+C++
+ROS
+
+
+Create Folders:
+cd Works[ace / proyecto_udemy / src
+
+ros2 pkg create proyecto_udemy --build-type ament_cmake #create pakage
+
+code file  #open with vscode
+
+cd ../../    #root of the workspace project
+
+create scripts
+
+colcon build     #compile packgar
+
+source install/setup.bash   #make aware of install filles
+
+verificadndo:
+ros pkg list
+
+
+=============================================
+
+Pusblisher:
+
+Open Fodler with Code Editor
+goto src/scripts amnd create file
+
+Once the file is saves, go to command window and cd to scripts
+python3 publisher.py
+
+open another window
+
+ros2 node list   #ver los topicos de lista y nodos
+ros2 topic list
+
+ros2 topic echo /hello_world       #ver la salida de topico
+
+si ctrl c , node list wont show.
+
+subscriber:
+
+python3 subscriber.py
+listening but nothing happen
+
+
+
+
+
+
