@@ -87,9 +87,9 @@ def main():
 
     # Example usage with distance-based movement
     node.move_distance(target_distance=2.0, speed=0.2)  # Move forward 2 meters
-    node.turn_left(0.5, 3)                              # Turn left
+    #node.turn_left(0.5, 3)                              # Turn left
     node.move_distance(target_distance=1.0, speed=0.2)  # Move forward 1 meter
-    node.turn_right(0.5, 3)                             # Turn right
+    #node.turn_right(0.5, 3)                             # Turn right
 
     # Stop after actions
     node.stop(1)
