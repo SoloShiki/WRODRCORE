@@ -28,7 +28,7 @@ class CmdVelPublisher(Node):
         self.publisher_ = self.create_publisher(Twist, '/controller/cmd_vel', 10)
 
     def send_twist(self, linear_x, angular_z, duration):
-         """Send a velocity command for a specific duration"""
+        """Send a velocity command for a specific duration"""
         twist = Twist()
         twist.linear.x = linear_x
         twist.angular.z = angular_z
