@@ -85,14 +85,21 @@ class CmdVelPublisher(Node):
         self.stop()
         print(f"Target reached: {odom_sub.x_pos - start_x:.2f} m traveled")
 
-    def move_forward(self, distance, speed=0.2, odom_topic='/odom'):
+    # def move_forward(self, distance, speed=0.2, odom_topic='/odom'):
+        # """Wrapper for forward distance movement"""
+        # self.move_distance(target_distance=distance, speed=abs(speed), odom_topic=odom_topic)
+
+    # def move_backward(self, distance, speed=0.2, odom_topic='/odom'):
+        # """Wrapper for backward distance movement"""
+        # self.move_distance(target_distance=distance, speed=-abs(speed), odom_topic=odom_topic)        
+
+    def move_backward(self, distance, speed=0.2, odom_topic='/odom'):
         """Wrapper for forward distance movement"""
         self.move_distance(target_distance=distance, speed=abs(speed), odom_topic=odom_topic)
 
-    def move_backward(self, distance, speed=0.2, odom_topic='/odom'):
+    def move_forward(self, distance, speed=0.2, odom_topic='/odom'):
         """Wrapper for backward distance movement"""
-        self.move_distance(target_distance=distance, speed=-abs(speed), odom_topic=odom_topic)        
-
+        self.move_distance(target_distance=distance, speed=-abs(speed), odom_topic=odom_topic)    
 
 def main():
     rclpy.init()
