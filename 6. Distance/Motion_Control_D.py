@@ -1,7 +1,9 @@
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, Odometry
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry  # Corrected
 import time
+
 
 
 class OdometryReader(Node):
