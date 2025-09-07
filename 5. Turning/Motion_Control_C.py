@@ -48,7 +48,8 @@ def main():
     node.turn_right(0.5, 5) # Turn right
 
     # Stop after actions
-    node.send_twist(0.0, 0.0, 1)
+    node.send_twist(linear_x=0, angular_z=0.0, 1)
+    #node.send_twist(0.0, 0.0, 1)
 
     node.destroy_node()
     rclpy.shutdown()
