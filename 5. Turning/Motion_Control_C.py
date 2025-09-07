@@ -42,10 +42,10 @@ def main():
     node = CmdVelPublisher()
 
     # Example usage:
-    node.forward(0.3, 2)    # Move forward
-    node.turn_left(0.5, 1)  # Turn left
+    node.forward(0.3, 5)    # Move forward
+    node.turn_left(0.5, 3)  # Turn left
     node.backward(0.3, 2)   # Move backward
-    node.turn_right(0.5, 1) # Turn right
+    node.turn_right(0.5, 5) # Turn right
 
     # Stop after actions
     node.send_twist(0.0, 0.0, 1)
