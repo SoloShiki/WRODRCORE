@@ -106,16 +106,14 @@ def main():
     node = CmdVelPublisher()
 
     # Example usage with distance-based movement
-    node.move_forward(distance=2.0, speed=0.2)   # Move forward 2 meters
+    node.move_forward(distance=2.0, speed=0.3)   # Move forward 2 meters
     #node.turn_left(speed=0.5, duration=3)        # Turn left
-    node.move_backward(distance=1.0, speed=0.2)  # Move backward 1 meter
+    time.sleep(0.2)
+    node.move_backward(distance=1.0, speed=0.3)  # Move backward 1 meter
     #node.turn_right(speed=0.5, duration=3)       # Turn right
 
 
-    #node.move_distance(target_distance=2.0, speed=0.2)  # Move forward 2 meters
-    #node.turn_left(0.5, 3)                              # Turn left
-    #node.move_distance(target_distance=1.0, speed=0.2)  # Move forward 1 meter
-    #node.turn_right(0.5, 3)                             # Turn right
+  
 
     # Stop after actions
     node.stop(1)
