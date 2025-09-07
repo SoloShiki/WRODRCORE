@@ -35,6 +35,23 @@ class CmdVelPublisher(Node):
     def turn_right(self, speed=0.5, duration=2.0, angle=5.0):
         """Rotate right (clockwise)"""
         self.send_twist(linear_x=speed, angular_z=-angle, duration=duration)
+        
+       # 🛑 Stop function
+    def stop(self, duration=1.0):
+        """Stop all movement, including steering"""
+        twist = Twist()
+        twist.linear.x = 0.0
+        twist.linear.y = 0.0
+        twist.linear.z = 0.0
+        twist.angular.x = 0.0
+        twist.angular.y = 0.0
+        twist.angular.z = 0.0
+
+        end_time = time.time() + duration
+        while time.time() < end_time:
+            self.publisher_.publish(twist)
+            time.sleep(0.1)
+
 
 
 def main():
@@ -47,9 +64,8 @@ def main():
     node.backward(0.3, 2)   # Move backward
     node.turn_right(0.5, 5) # Turn right
 
-    # Stop after actions
-    node.send_twist(linear_x=0, angular_z=0.0, 1)
-    #node.send_twist(0.0, 0.0, 1)
+   # Stop after actions
+    node.stop(1)  # Stop all movement for 1 second
 
     node.destroy_node()
     rclpy.shutdown()
