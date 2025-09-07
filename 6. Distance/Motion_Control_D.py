@@ -28,6 +28,7 @@ class CmdVelPublisher(Node):
         self.publisher_ = self.create_publisher(Twist, '/controller/cmd_vel', 10)
 
     def send_twist(self, linear_x, angular_z, duration):
+         """Send a velocity command for a specific duration"""
         twist = Twist()
         twist.linear.x = linear_x
         twist.angular.z = angular_z
@@ -37,6 +38,7 @@ class CmdVelPublisher(Node):
             self.publisher_.publish(twist)
             time.sleep(0.1)
 
+ # ------------------- Time-based movement -------------------
     # 🚀 Movement helper functions
     def forward(self, speed=0.2, duration=2.0):
         self.send_twist(linear_x=speed, angular_z=0.0, duration=duration)
@@ -50,6 +52,7 @@ class CmdVelPublisher(Node):
     def turn_right(self, speed=0.5, duration=2.0, angle=5.0):
         self.send_twist(linear_x=speed, angular_z=-angle, duration=duration)
 
+ # ------------------- Stop -------------------
     # 🛑 Stop function
     def stop(self, duration=1.0):
         twist = Twist()
@@ -65,20 +68,30 @@ class CmdVelPublisher(Node):
             self.publisher_.publish(twist)
             time.sleep(0.1)
 
+
+ # ------------------- Distance-based movement -------------------
     # 📏 Distance-based movement
     def move_distance(self, target_distance, speed=0.2, odom_topic='/odom'):
-        """Move forward a specific distance in meters using odometry"""
+        """Move forward or backward a specific distance in meters using odometry"""
         odom_sub = OdometryReader(topic=odom_topic)
         rclpy.spin_once(odom_sub)  # get initial position
         start_x = odom_sub.x_pos
 
         print(f"Starting X position: {start_x:.2f} m")
-        while rclpy.ok() and (odom_sub.x_pos - start_x) < target_distance:
+        while rclpy.ok() and abs(odom_sub.x_pos - start_x) < target_distance:
             self.send_twist(linear_x=speed, angular_z=0.0, duration=0.1)
             rclpy.spin_once(odom_sub)  # update odometry
 
         self.stop()
         print(f"Target reached: {odom_sub.x_pos - start_x:.2f} m traveled")
+
+    def move_forward(self, distance, speed=0.2, odom_topic='/odom'):
+        """Wrapper for forward distance movement"""
+        self.move_distance(target_distance=distance, speed=abs(speed), odom_topic=odom_topic)
+
+    def move_backward(self, distance, speed=0.2, odom_topic='/odom'):
+        """Wrapper for backward distance movement"""
+        self.move_distance(target_distance=distance, speed=-abs(speed), odom_topic=odom_topic)        
 
 
 def main():
@@ -86,9 +99,15 @@ def main():
     node = CmdVelPublisher()
 
     # Example usage with distance-based movement
-    node.move_distance(target_distance=2.0, speed=-0.2)  # Move forward 2 meters
+    node.move_forward(distance=2.0, speed=0.2)   # Move forward 2 meters
+    #node.turn_left(speed=0.5, duration=3)        # Turn left
+    node.move_backward(distance=1.0, speed=0.2)  # Move backward 1 meter
+    #node.turn_right(speed=0.5, duration=3)       # Turn right
+
+
+    #node.move_distance(target_distance=2.0, speed=0.2)  # Move forward 2 meters
     #node.turn_left(0.5, 3)                              # Turn left
-    node.move_distance(target_distance=1.0, speed=0.2)  # Move forward 1 meter
+    #node.move_distance(target_distance=1.0, speed=0.2)  # Move forward 1 meter
     #node.turn_right(0.5, 3)                             # Turn right
 
     # Stop after actions
