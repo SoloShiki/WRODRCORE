@@ -63,7 +63,8 @@ def main():
     node.turn_left(0.5, 3)  # Turn left
     node.backward(0.3, 2)   # Move backward
     node.turn_right(0.5, 5) # Turn right
-
+    node.backward(0.5, 2)   # Move backward
+    
    # Stop after actions
     node.stop(1)  # Stop all movement for 1 second
 
