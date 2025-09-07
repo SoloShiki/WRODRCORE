@@ -28,13 +28,13 @@ class CmdVelPublisher(Node):
         """Move backward with given speed and duration"""
         self.send_twist(linear_x=-speed, angular_z=0.0, duration=duration)
 
-    def turn_left(self, speed=0.5, duration=2.0):
+    def turn_left(self, speed=0.5, duration=2.0, angle=5.0):
         """Rotate left (counter-clockwise)"""
-        self.send_twist(linear_x=0.0, angular_z=speed, duration=duration)
+        self.send_twist(linear_x=speed, angular_z=angle, duration=duration)
 
-    def turn_right(self, speed=0.5, duration=2.0):
+    def turn_right(self, speed=0.5, duration=2.0, angle=5.0):
         """Rotate right (clockwise)"""
-        self.send_twist(linear_x=0.0, angular_z=-speed, duration=duration)
+        self.send_twist(linear_x=speed, angular_z=-angle, duration=duration)
 
 
 def main():
