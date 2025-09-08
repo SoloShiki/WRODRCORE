@@ -2,36 +2,16 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+import math
 import time
 import numpy as np
 import random
 from collections import deque
-import math
-
-# ---------------- Quaternion to Euler Conversion ----------------
-def euler_from_quaternion(quat):
-    """
-    Convert quaternion (x, y, z, w) to roll, pitch, yaw
-    """
-    x, y, z, w = quat
-    t0 = +2.0 * (w * x + y * z)
-    t1 = +1.0 - 2.0 * (x * x + y * y)
-    roll = math.atan2(t0, t1)
-
-    t2 = +2.0 * (w * y - z * x)
-    t2 = +1.0 if t2 > +1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
-    pitch = math.asin(t2)
-
-    t3 = +2.0 * (w * z + x * y)
-    t4 = +1.0 - 2.0 * (y * y + z * z)
-    yaw = math.atan2(t3, t4)
-
-    return roll, pitch, yaw
+import threading
 
 # ---------------- Odometry Reader ----------------
 class OdometryReader(Node):
-    """Subscribes to odometry topic to read robot pose"""
+    """Subscribes to odometry topic to read robot position and yaw"""
     def __init__(self, topic='/odom'):
         super().__init__('odom_reader')
         self.x_pos = 0.0
@@ -47,8 +27,13 @@ class OdometryReader(Node):
     def odom_callback(self, msg):
         self.x_pos = msg.pose.pose.position.x
         self.y_pos = msg.pose.pose.position.y
+
         q = msg.pose.pose.orientation
-        _, _, self.yaw = euler_from_quaternion([q.x, q.y, q.z, q.w])
+        # Convert quaternion to yaw
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        self.yaw = math.atan2(siny_cosp, cosy_cosp)
+
 
 # ---------------- Command Velocity Publisher ----------------
 class CmdVelPublisher(Node):
@@ -63,34 +48,7 @@ class CmdVelPublisher(Node):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            time.sleep(0.1)
-
-    def move_distance(self, distance, speed=0.2):
-        """Move forward/backward a specific distance using odometry"""
-        odom_sub = OdometryReader()
-        rclpy.spin_once(odom_sub)
-        start_x = odom_sub.x_pos
-        while rclpy.ok() and abs(odom_sub.x_pos - start_x) < abs(distance):
-            direction = 1 if distance > 0 else -1
-            self.send_twist(linear_x=speed*direction, angular_z=0.0, duration=0.1)
-            rclpy.spin_once(odom_sub)
-        self.stop()
-
-    def rotate_to_angle(self, target_angle, speed=0.3):
-        """Rotate robot to a target yaw (radians)"""
-        odom_sub = OdometryReader()
-        rclpy.spin_once(odom_sub)
-        while rclpy.ok():
-            current_yaw = odom_sub.yaw
-            error = target_angle - current_yaw
-            # Normalize angle error to [-pi, pi]
-            error = math.atan2(math.sin(error), math.cos(error))
-            if abs(error) < 0.05:  # tolerance in radians
-                break
-            angular_speed = speed if error > 0 else -speed
-            self.send_twist(linear_x=0.0, angular_z=angular_speed, duration=0.1)
-            rclpy.spin_once(odom_sub)
-        self.stop()
+            time.sleep(0.05)
 
     def stop(self, duration=0.5):
         twist = Twist()
@@ -99,14 +57,42 @@ class CmdVelPublisher(Node):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            time.sleep(0.1)
+            time.sleep(0.05)
+
+    # Move forward/backward using odometry
+    def move_distance(self, distance, odom, speed=0.15):
+        start_x, start_y = odom.x_pos, odom.y_pos
+        traveled = 0.0
+        while rclpy.ok() and traveled < abs(distance):
+            direction = 1 if distance > 0 else -1
+            self.send_twist(speed * direction, 0.0, 0.1)
+            dx = odom.x_pos - start_x
+            dy = odom.y_pos - start_y
+            traveled = math.sqrt(dx*dx + dy*dy)
+        self.stop()
+
+    # Rotate robot on its axis
+    def rotate_to_angle(self, target_angle, odom, speed=0.3):
+        def normalize_angle(a):
+            return math.atan2(math.sin(a), math.cos(a))
+
+        target_angle = normalize_angle(target_angle)
+        while rclpy.ok():
+            current = normalize_angle(odom.yaw)
+            error = normalize_angle(target_angle - current)
+            if abs(error) < 0.05:  # ~3 degrees tolerance
+                break
+            angular_z = speed if error > 0 else -speed
+            self.send_twist(0.0, angular_z, 0.05)
+        self.stop()
+
 
 # ---------------- Maze Generation ----------------
 def generate_maze(x_size=None, y_size=None, num_walls=None):
     if x_size is None:
-        x_size = random.randint(6, 30)
+        x_size = random.randint(6, 12)
     if y_size is None:
-        y_size = random.randint(6, 30)
+        y_size = random.randint(6, 12)
     maze = np.zeros((x_size, y_size), dtype=int)
     if num_walls is None:
         num_walls = int(x_size * 1.8)
@@ -121,13 +107,14 @@ def generate_maze(x_size=None, y_size=None, num_walls=None):
     maze[goal] = 0
     return maze, start, goal
 
+
 # ---------------- BFS Path Planning ----------------
 def bfs_path(maze, start, goal):
     visited = np.zeros_like(maze)
     parent = {}
     frontier = deque([start])
     visited[start] = 1
-    directions = [(-1,0),(1,0),(0,-1),(0,1)]
+    directions = [(-1,0),(1,0),(0,-1),(0,1)]  # up, down, left, right
     while frontier:
         current = frontier.popleft()
         if current == goal:
@@ -150,6 +137,7 @@ def bfs_path(maze, start, goal):
     path.reverse()
     return path
 
+
 # ---------------- Display Maze ----------------
 def print_maze(maze, start, goal, path=None):
     for i in range(maze.shape[0]):
@@ -162,42 +150,71 @@ def print_maze(maze, start, goal, path=None):
             elif path and (i,j) in path:
                 line += " x "
             elif maze[i,j] == 1:
-                line += " 0 "
+                line += " # "
             else:
                 line += " . "
         print(line)
     print("\n")
 
+
 # ---------------- Map Grid Navigation ----------------
-def follow_path(node, path, cell_size=0.2):
-    orientation = -math.pi/2  # Facing downwards (south) by default
+def follow_path(cmd_node, odom, path, cell_size=0.2):
+    """
+    Move the robot along the BFS path.
+    Robot starts facing south (negative Y).
+    """
+    orientation = "S"  # N,E,S,W
+    orientation_map = {
+        "N":  math.pi/2,
+        "E":  0.0,
+        "S": -math.pi/2,
+        "W":  math.pi
+    }
+
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
         dx = nxt[0] - cur[0]
         dy = nxt[1] - cur[1]
 
-        if dx == 1:      # move down
-            target_angle = -math.pi/2
-        elif dx == -1:   # move up
-            target_angle = math.pi/2
-        elif dy == 1:    # move right
-            target_angle = 0.0
-        elif dy == -1:   # move left
-            target_angle = math.pi
+        if dx == 1:      # down
+            orientation = "S"
+        elif dx == -1:   # up
+            orientation = "N"
+        elif dy == 1:    # right
+            orientation = "E"
+        elif dy == -1:   # left
+            orientation = "W"
 
-        node.rotate_to_angle(target_angle)
-        node.move_distance(cell_size)
+        target_yaw = orientation_map[orientation]
+        cmd_node.rotate_to_angle(target_yaw, odom)
+
+        # --- Print movement log ---
+        print(f"[STEP {i}] Moving {orientation} | "
+              f"Pos=({odom.x_pos:.2f}, {odom.y_pos:.2f}) | "
+              f"Yaw={math.degrees(odom.yaw):.1f}°")
+
+        cmd_node.move_distance(cell_size, odom)
+
 
 # ---------------- Main Program ----------------
 def main():
     rclpy.init()
-    node = CmdVelPublisher()
 
-    USE_FIXED_MAP = True  # switch between random and fixed map
+    # Nodes
+    odom_reader = OdometryReader("/odom")
+    cmd_node = CmdVelPublisher()
 
+    # Executor in background thread
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(odom_reader)
+    executor.add_node(cmd_node)
+    executor_thread = threading.Thread(target=executor.spin, daemon=True)
+    executor_thread.start()
+
+    # Choose map type
+    USE_FIXED_MAP = True
     if USE_FIXED_MAP:
-        # Fixed 6x6 maze example
         maze = np.array([
             [0, 1, 0, 0, 0, 0],
             [0, 1, 0, 1, 1, 0],
@@ -218,11 +235,12 @@ def main():
     print("Solution Path:")
     print_maze(maze, start, goal, path)
 
-    follow_path(node, path, cell_size=0.2)
+    follow_path(cmd_node, odom_reader, path, cell_size=0.25)
 
-    node.stop()
-    node.destroy_node()
+    cmd_node.stop()
+    executor.shutdown()
     rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
