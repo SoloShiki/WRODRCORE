@@ -3,7 +3,6 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 import numpy as np
-import random
 import math
 import time
 from collections import deque
@@ -30,9 +29,11 @@ class OdometryReader(Node):
 
 # ---------------- CmdVel Publisher ----------------
 class CmdVelPublisher(Node):
-    def __init__(self):
+    def __init__(self, wheelbase=0.16, max_steering_angle=0.4):
         super().__init__('cmd_vel_publisher')
         self.publisher_ = self.create_publisher(Twist, '/controller/cmd_vel', 10)
+        self.wheelbase = wheelbase
+        self.max_steering = max_steering_angle
 
     def send_twist(self, linear_x, angular_z, duration):
         twist = Twist()
@@ -41,50 +42,53 @@ class CmdVelPublisher(Node):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            time.sleep(0.1)
+            time.sleep(0.05)
 
     def stop(self, duration=0.5):
         self.send_twist(0.0, 0.0, duration)
 
     # ---------------- Ackermann Arc Turn ----------------
-    def arc_turn_to_angle(self, target_angle, odom, forward_speed=0.1, steering_z=0.2):
-        """Turn robot along an arc until yaw matches target (Ackermann steering)"""
+    def ackermann_turn_to_yaw(self, target_yaw, odom, speed=0.1):
+        """Turn along an arc until target yaw is reached (Ackermann)"""
         def normalize(a):
             return math.atan2(math.sin(a), math.cos(a))
-
-        target_angle = normalize(target_angle)
+        
+        target_yaw = normalize(target_yaw)
         while rclpy.ok():
             current_yaw = normalize(odom.yaw)
-            error = normalize(target_angle - current_yaw)
-            if abs(error) < 0.05:  # ~3 degrees tolerance
+            yaw_error = normalize(target_yaw - current_yaw)
+            if abs(yaw_error) < 0.02:  # ~1 degree tolerance
                 break
-            angular = steering_z if error > 0 else -steering_z
-            self.send_twist(forward_speed, angular, 0.1)
+            # Compute steering angle using Ackermann geometry
+            steering_angle = max(-self.max_steering,
+                                 min(self.max_steering, yaw_error))
+            angular_vel = speed * math.tan(steering_angle) / self.wheelbase
+            print(f"Turning: target {math.degrees(target_yaw):.1f}°, current {math.degrees(current_yaw):.1f}°, steering {math.degrees(steering_angle):.1f}°")
+            self.send_twist(speed, angular_vel, 0.05)
         self.stop()
 
     # ---------------- Move Straight ----------------
-    def move_distance(self, distance, forward_speed=0.2):
-        odom = OdometryReader()
-        rclpy.spin_once(odom)
+    def move_distance(self, distance, odom, speed=0.2):
         start_x, start_y = odom.x_pos, odom.y_pos
-        while rclpy.ok() and math.hypot(odom.x_pos-start_x, odom.y_pos-start_y) < abs(distance):
+        while rclpy.ok() and math.hypot(odom.x_pos - start_x, odom.y_pos - start_y) < abs(distance):
             direction = 1 if distance > 0 else -1
-            self.send_twist(forward_speed*direction, 0.0, 0.1)
+            self.send_twist(speed*direction, 0.0, 0.05)
             rclpy.spin_once(odom)
         self.stop()
 
 # ---------------- Maze / Grid ----------------
-def generate_maze(x_size=None, y_size=None, num_walls=None):
-    if x_size is None: x_size = random.randint(6, 30)
-    if y_size is None: y_size = random.randint(6, 30)
+def generate_maze(x_size=6, y_size=6):
     maze = np.zeros((x_size, y_size), dtype=int)
-    if num_walls is None: num_walls = int(x_size*1.8)
-    for idx in random.sample(range(x_size*y_size), num_walls):
-        maze[idx//y_size, idx%y_size] = 1
+    # Place walls manually or randomly
+    maze[0,1] = 1
+    maze[1,3] = 1
+    maze[1,4] = 1
+    maze[3,1] = 1
+    maze[3,2] = 1
+    maze[5,1] = 1
+    maze[5,2] = 1
     start = (0,0)
-    goal  = (x_size-1, y_size-1)
-    maze[start] = 0
-    maze[goal] = 0
+    goal  = (1,5)
     return maze, start, goal
 
 def bfs_path(maze, start, goal):
@@ -130,25 +134,18 @@ def print_maze(maze, start, goal, path=None):
         print(line)
     print("\n")
 
-# ---------------- Follow Path with Ackermann ----------------
+# ---------------- Follow Path Ackermann ----------------
 def follow_path_ackermann(node, odom, path, cell_size=0.3):
-    """
-    Follow the BFS path respecting Ackermann constraints.
-    Robot moves along arcs to turn.
-    """
-    # Map directions to target angles (South = 0 rad)
     dir_angles = {(-1,0): math.pi, (1,0):0, (0,-1):-math.pi/2, (0,1):math.pi/2}
-
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
-        dx = nxt[0]-cur[0]
-        dy = nxt[1]-cur[1]
-        move_dir = (dx,dy)
+        dx, dy = nxt[0]-cur[0], nxt[1]-cur[1]
+        move_dir = (dx, dy)
         target_yaw = dir_angles[move_dir]
-        print(f"Moving from {cur} -> {nxt}, target yaw: {round(math.degrees(target_yaw),1)}°")
-        node.arc_turn_to_angle(target_yaw, odom)
-        node.move_distance(cell_size)
+        print(f"Moving {cur} -> {nxt}, target yaw: {math.degrees(target_yaw):.1f}°")
+        node.ackermann_turn_to_yaw(target_yaw, odom)
+        node.move_distance(cell_size, odom)
 
 # ---------------- Main ----------------
 def main():
@@ -157,21 +154,7 @@ def main():
     odom = OdometryReader()
     rclpy.spin_once(odom)
 
-    USE_FIXED_MAP = True
-    if USE_FIXED_MAP:
-        maze = np.array([
-            [0,1,0,0,0,0],
-            [0,1,0,1,1,0],
-            [0,0,0,1,0,0],
-            [0,1,1,1,0,1],
-            [0,0,1,0,0,0],
-            [0,1,1,1,1,0]
-        ])
-        start = (0,0)
-        goal  = (1,5)
-    else:
-        maze, start, goal = generate_maze()
-
+    maze, start, goal = generate_maze()
     print("Original Maze:")
     print_maze(maze,start,goal)
 
@@ -180,6 +163,7 @@ def main():
     print_maze(maze,start,goal,path)
 
     follow_path_ackermann(node, odom, path, cell_size=0.3)
+
     node.stop()
     node.destroy_node()
     rclpy.shutdown()
