@@ -7,11 +7,31 @@ import numpy as np
 import random
 from collections import deque
 import math
-from tf_transformations import euler_from_quaternion
+
+# ---------------- Quaternion to Euler Conversion ----------------
+def euler_from_quaternion(quat):
+    """
+    Convert quaternion (x, y, z, w) to roll, pitch, yaw
+    """
+    x, y, z, w = quat
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll = math.atan2(t0, t1)
+
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch = math.asin(t2)
+
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw = math.atan2(t3, t4)
+
+    return roll, pitch, yaw
 
 # ---------------- Odometry Reader ----------------
 class OdometryReader(Node):
-    """Subscribes to odometry topic to read robot position and orientation (yaw)"""
+    """Subscribes to odometry topic to read robot pose"""
     def __init__(self, topic='/odom'):
         super().__init__('odom_reader')
         self.x_pos = 0.0
@@ -28,8 +48,7 @@ class OdometryReader(Node):
         self.x_pos = msg.pose.pose.position.x
         self.y_pos = msg.pose.pose.position.y
         q = msg.pose.pose.orientation
-        quat = [q.x, q.y, q.z, q.w]
-        _, _, self.yaw = euler_from_quaternion(quat)
+        _, _, self.yaw = euler_from_quaternion([q.x, q.y, q.z, q.w])
 
 # ---------------- Command Velocity Publisher ----------------
 class CmdVelPublisher(Node):
@@ -46,15 +65,30 @@ class CmdVelPublisher(Node):
             self.publisher_.publish(twist)
             time.sleep(0.1)
 
-    # Movement functions
     def move_distance(self, distance, speed=0.2):
-        """Move forward/backward a specific distance using odometry (X axis only for simplicity)"""
+        """Move forward/backward a specific distance using odometry"""
         odom_sub = OdometryReader()
         rclpy.spin_once(odom_sub)
         start_x = odom_sub.x_pos
         while rclpy.ok() and abs(odom_sub.x_pos - start_x) < abs(distance):
             direction = 1 if distance > 0 else -1
             self.send_twist(linear_x=speed*direction, angular_z=0.0, duration=0.1)
+            rclpy.spin_once(odom_sub)
+        self.stop()
+
+    def rotate_to_angle(self, target_angle, speed=0.3):
+        """Rotate robot to a target yaw (radians)"""
+        odom_sub = OdometryReader()
+        rclpy.spin_once(odom_sub)
+        while rclpy.ok():
+            current_yaw = odom_sub.yaw
+            error = target_angle - current_yaw
+            # Normalize angle error to [-pi, pi]
+            error = math.atan2(math.sin(error), math.cos(error))
+            if abs(error) < 0.05:  # tolerance in radians
+                break
+            angular_speed = speed if error > 0 else -speed
+            self.send_twist(linear_x=0.0, angular_z=angular_speed, duration=0.1)
             rclpy.spin_once(odom_sub)
         self.stop()
 
@@ -66,44 +100,6 @@ class CmdVelPublisher(Node):
         while time.time() < end_time:
             self.publisher_.publish(twist)
             time.sleep(0.1)
-
-    # ---- Precise turning using odometry yaw ----
-    def turn_in_place(self, angle_deg, speed=0.3):
-        """Rotate robot in place using odometry yaw feedback"""
-        odom_sub = OdometryReader()
-        rclpy.spin_once(odom_sub)
-
-        start_yaw = odom_sub.yaw
-        target_yaw = start_yaw + math.radians(angle_deg)
-
-        def normalize_angle(a):
-            return math.atan2(math.sin(a), math.cos(a))
-
-        target_yaw = normalize_angle(target_yaw)
-
-        twist = Twist()
-        twist.linear.x = 0.0
-        twist.angular.z = speed if angle_deg > 0 else -speed
-
-        while rclpy.ok():
-            rclpy.spin_once(odom_sub)
-            cur_yaw = odom_sub.yaw
-            err = normalize_angle(target_yaw - cur_yaw)
-
-            if abs(err) < math.radians(2):  # tolerance 2 degrees
-                break
-
-            self.publisher_.publish(twist)
-            time.sleep(0.05)
-
-        self.stop()
-        print(f"✅ Turned {angle_deg}° (final yaw: {odom_sub.yaw:.2f} rad)")
-
-    def turn_left(self):
-        self.turn_in_place(90)
-
-    def turn_right(self):
-        self.turn_in_place(-90)
 
 # ---------------- Maze Generation ----------------
 def generate_maze(x_size=None, y_size=None, num_walls=None):
@@ -174,55 +170,31 @@ def print_maze(maze, start, goal, path=None):
 
 # ---------------- Map Grid Navigation ----------------
 def follow_path(node, path, cell_size=0.2):
-    # Robot starts facing SOUTH (downwards)
-    orientation = "S"
-
+    orientation = -math.pi/2  # Facing downwards (south) by default
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
         dx = nxt[0] - cur[0]
         dy = nxt[1] - cur[1]
 
-        if dx == 1:      # move down (south)
-            desired = "S"
-        elif dx == -1:   # move up (north)
-            desired = "N"
-        elif dy == 1:    # move right (east)
-            desired = "E"
-        elif dy == -1:   # move left (west)
-            desired = "W"
-        else:
-            continue
+        if dx == 1:      # move down
+            target_angle = -math.pi/2
+        elif dx == -1:   # move up
+            target_angle = math.pi/2
+        elif dy == 1:    # move right
+            target_angle = 0.0
+        elif dy == -1:   # move left
+            target_angle = math.pi
 
-        # Adjust orientation
-        if orientation != desired:
-            orientation = rotate_to_orientation(node, orientation, desired)
-
+        node.rotate_to_angle(target_angle)
         node.move_distance(cell_size)
-
-def rotate_to_orientation(node, current, desired):
-    """Rotate robot from current orientation to desired orientation"""
-    order = ["N", "E", "S", "W"]  # clockwise order
-    idx_cur = order.index(current)
-    idx_des = order.index(desired)
-    diff = (idx_des - idx_cur) % 4
-
-    if diff == 1:   # 90° right
-        node.turn_right()
-    elif diff == 2: # 180°
-        node.turn_right()
-        node.turn_right()
-    elif diff == 3: # 90° left
-        node.turn_left()
-
-    return desired
 
 # ---------------- Main Program ----------------
 def main():
     rclpy.init()
     node = CmdVelPublisher()
 
-    USE_FIXED_MAP = True  # Set to False for random map
+    USE_FIXED_MAP = True  # switch between random and fixed map
 
     if USE_FIXED_MAP:
         # Fixed 6x6 maze example
@@ -234,8 +206,8 @@ def main():
             [0, 0, 1, 0, 0, 0],
             [0, 1, 1, 1, 1, 0]
         ])
-        start = (0,0)  # top-left
-        goal  = (5,5)  # bottom-right
+        start = (0,0)
+        goal  = (5,5)
     else:
         maze, start, goal = generate_maze()
 
