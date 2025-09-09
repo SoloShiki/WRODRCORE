@@ -125,29 +125,15 @@ def bfs_path(maze, start, goal):
     path.reverse()
     return path
 
-# ---------------- Matplotlib Maze Animation ----------------
-def animate_maze(maze, path, start, goal):
-    fig, ax = plt.subplots()
-    for step in path:
-        img = np.copy(maze)
-        img[start] = 2   # start
-        img[goal] = 3    # goal
-        img[step] = 4    # robot
-
-        ax.clear()
-        ax.imshow(img, cmap="tab20", origin="upper")
-        ax.set_title("Maze Navigation")
-        plt.pause(0.4)
-    plt.show()
-
-# ---------------- Map Grid Navigation ----------------
-def follow_path(node, path, odom_sub, cell_size=0.2):
+# ---------------- Map Grid Navigation + Live Visualization ----------------
+def follow_path(node, path, odom_sub, cell_size=0.2, maze=None, start=None, goal=None, ax=None):
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
         dx = nxt[0] - cur[0]
         dy = nxt[1] - cur[1]
 
+        # Send robot movement
         if dx == 1:     # down
             node.turn_right(duration=0.5)
         elif dx == -1:  # up
@@ -158,6 +144,20 @@ def follow_path(node, path, odom_sub, cell_size=0.2):
             node.turn_left(duration=0.5)
 
         node.move_distance(cell_size, odom_sub=odom_sub)
+
+        # Update visualization (robot moves step by step)
+        if maze is not None and ax is not None:
+            img = np.copy(maze)
+            img[start] = 2
+            img[goal] = 3
+            for visited in path[:i+1]:  # leave trail
+                img[visited] = 5
+            img[nxt] = 4  # current robot position
+
+            ax.clear()
+            ax.imshow(img, cmap="tab20", origin="upper")
+            ax.set_title("Maze Navigation (Live)")
+            plt.pause(0.4)
 
 # ---------------- Main Program ----------------
 def main():
@@ -183,11 +183,13 @@ def main():
 
     path = bfs_path(maze, start, goal)
 
-    # Show animated maze in matplotlib
-    animate_maze(maze, path, start, goal)
+    # Prepare matplotlib figure
+    fig, ax = plt.subplots()
 
-    # Actually move the robot
-    follow_path(node, path, odom_sub=odom_reader, cell_size=0.2)
+    # Move robot while updating visualization live
+    follow_path(node, path, odom_sub=odom_reader, cell_size=0.2, maze=maze, start=start, goal=goal, ax=ax)
+
+    plt.show()  # keep window open after movement finishes
 
     node.stop()
     node.destroy_node()
