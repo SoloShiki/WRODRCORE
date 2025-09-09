@@ -72,7 +72,7 @@ class CmdVelPublisher(Node):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            plt.pause(0.01)  # ← allow GUI update
+            time.sleep(0.1)
 
     def move_distance(self, distance, odom_sub, speed=0.2):
         """Move forward/backward a specific distance using odometry (X axis only)"""
@@ -83,7 +83,6 @@ class CmdVelPublisher(Node):
             direction = 1 if distance > 0 else -1
             self.send_twist(linear_x=speed*direction, angular_z=0.0, duration=0.1)
             rclpy.spin_once(odom_sub)
-            plt.pause(0.01)  # ← allow GUI update
         self.stop(0.1)
 
     # --- NEW (PID): helper for angle wrapping
@@ -95,13 +94,6 @@ class CmdVelPublisher(Node):
     def _rotate_to_angle(self, target_delta_rad, odom_sub,
                          fwd_speed=0.15, yaw_tol=0.05,
                          Kp=1.2, Ki=0.0, Kd=0.3):
-        """
-        Rotate by target_delta_rad using odometry yaw with PID steering.
-        Ackermann: we cannot spin in place, so we move forward with steering.
-        - fwd_speed: constant forward speed (m/s)
-        - yaw_tol: stop when within this yaw error (rad)
-        - Kp, Ki, Kd: PID gains for angular.z
-        """
         rclpy.spin_once(odom_sub)
         start_yaw = odom_sub.yaw
         target_yaw = start_yaw + target_delta_rad
@@ -135,7 +127,7 @@ class CmdVelPublisher(Node):
             twist.angular.z = control
             self.publisher_.publish(twist)
 
-            plt.pause(dt)  # ← allow GUI update
+            time.sleep(dt)
 
         self.stop(0.15)
 
@@ -162,7 +154,7 @@ class CmdVelPublisher(Node):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            plt.pause(0.01)  # ← allow GUI update
+            time.sleep(0.1)
 
 # ---------------- Maze Generation ----------------
 def generate_maze(x_size=None, y_size=None, num_walls=None):
@@ -221,11 +213,16 @@ def plot_maze(maze, start, goal, path=None, current=None):
         px, py = zip(*path)
         plt.plot(py, px, "b.-", label="Path")
     if current:
-        plt.plot(current[1], current[0], "ro", label="Robot")
+        plt.plot(current[1], current[0], "ro", label="Robot")  # robot position
     plt.plot(start[1], start[0], "go", markersize=10, label="Start")
     plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal")
     plt.legend()
-    plt.pause(0.01)  # ← allow GUI update
+    plt.pause(0.01)  # smaller pause for smoother updates
+
+# ---------------- Helper ----------------
+def odom_to_grid(x, y, grid_size=GRID_SIZE):
+    """Convert odometry (meters) to maze grid coordinates"""
+    return int(round(x / grid_size)), int(round(y / grid_size))
 
 # ---------------- Map Grid Navigation ----------------
 def follow_path(node, path, odom_sub, maze, start, goal):
@@ -246,7 +243,9 @@ def follow_path(node, path, odom_sub, maze, start, goal):
             node.turn_left(duration=0.5, odom_sub=odom_sub)
 
         node.move_distance(GRID_SIZE, odom_sub=odom_sub)
-        plot_maze(maze, start, goal, path, current=nxt)
+        # --- Use real odometry for robot position
+        cur_grid = odom_to_grid(odom_sub.x_pos, odom_sub.y_pos)
+        plot_maze(maze, start, goal, path, current=cur_grid)
 
 # ---------------- Main Program ----------------
 def main():
@@ -272,9 +271,8 @@ def main():
 
     path = bfs_path(maze, start, goal)
 
-    plt.ion()
     plt.figure()
-    plot_maze(maze, start, goal, path, current=start)
+    plot_maze(maze, start, goal, path, current=odom_to_grid(odom_reader.x_pos, odom_reader.y_pos))
 
     follow_path(node, path, odom_sub=odom_reader, maze=maze, start=start, goal=goal)
 
