@@ -242,10 +242,16 @@ def follow_path(node, path, odom_sub, maze, start, goal):
         elif dy == -1:  # left
             node.turn_left(duration=0.5, odom_sub=odom_sub)
 
-        node.move_distance(GRID_SIZE, odom_sub=odom_sub)
-        # --- Use real odometry for robot position
-        cur_grid = odom_to_grid(odom_sub.x_pos, odom_sub.y_pos)
-        plot_maze(maze, start, goal, path, current=cur_grid)
+        # Move with small increments and update plot frequently
+        target_distance = GRID_SIZE
+        moved = 0.0
+        while moved < target_distance and rclpy.ok():
+            rclpy.spin_once(odom_sub)  # update odom
+            node.send_twist(linear_x=0.05, angular_z=0.0, duration=0.05)
+            moved += 0.05
+            cur_grid = odom_to_grid(odom_sub.x_pos, odom_sub.y_pos)
+            plot_maze(maze, start, goal, path, current=cur_grid)
+
 
 # ---------------- Main Program ----------------
 def main():
