@@ -8,10 +8,10 @@
 * [motion_simple.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/3.%20Motion/Motion_Simple.py) Run foward for 2 seconds and stop
 * Motion_controll.py
 4. ***Motion_B***
-* Motion_control.py
+* Motion_control_B.py
 5. ***Turning***
 * Motion_control_C.py
-7. ***Distance***
+6. ***Distance***
 * [Mazed_test.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/6.%20Distance/Mazed_test.py) Solve a simple mazed , robot only avances each grid
 * [Mazed_Printing.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/6.%20Distance/Mazed_Printing.py) Solve a simple mazed , robot only avances each grid, this program prints each step
 * [Mazed_Ascci_disp.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/6.%20Distance/Mazed_Ascci_disp.py) This program clears the screen and provide an updated ascii map for the robot
