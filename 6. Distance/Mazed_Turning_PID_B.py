@@ -22,7 +22,7 @@ import numpy as np
 import random
 from collections import deque
 import matplotlib.pyplot as plt
-import math
+import math  # --- NEW: for yaw math
 
 # ---------------- Try importing tf_transformations ----------------
 try:
@@ -32,10 +32,11 @@ except ImportError:
     print("       pip install tf-transformations OR sudo apt install ros-${ROS_DISTRO}-tf-transformations")
 
 # ---------------- CONFIG ----------------
-GRID_SIZE = 0.2  # Unique variable for grid size
+GRID_SIZE = 0.2  # <<< Unique variable for grid cell size
 
 # ---------------- Odometry Reader ----------------
 class OdometryReader(Node):
+    """Subscribes to odometry topic to read robot X,Y position and yaw"""
     def __init__(self, topic='/odom'):
         super().__init__('odom_reader')
         self.x_pos = 0.0
@@ -53,7 +54,7 @@ class OdometryReader(Node):
         self.y_pos = msg.pose.pose.position.y
         q = msg.pose.pose.orientation
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        cosy_cosp = 1.0 - 2.0 * (q.y*q.y + q.z*q.z)
         self.yaw = math.atan2(siny_cosp, cosy_cosp)
 
 # ---------------- Command Velocity Publisher ----------------
@@ -75,10 +76,15 @@ class CmdVelPublisher(Node):
         print(f"[INFO] Moving {distance} meters at speed {speed}")
         rclpy.spin_once(odom_sub)
         start_x = odom_sub.x_pos
-        while rclpy.ok() and abs(odom_sub.x_pos - start_x) < abs(distance):
+        start_y = odom_sub.y_pos
+        moved = 0.0
+        while rclpy.ok() and moved < abs(distance):
             direction = 1 if distance > 0 else -1
             self.send_twist(linear_x=speed*direction, angular_z=0.0, duration=0.1)
             rclpy.spin_once(odom_sub)
+            dx = odom_sub.x_pos - start_x
+            dy = odom_sub.y_pos - start_y
+            moved = math.sqrt(dx*dx + dy*dy)
         self.stop(0.1)
 
     @staticmethod
@@ -91,9 +97,7 @@ class CmdVelPublisher(Node):
         rclpy.spin_once(odom_sub)
         start_yaw = odom_sub.yaw
         target_yaw = start_yaw + target_delta_rad
-
-        print(f"[INFO] Ackermann PID rotate: from {math.degrees(start_yaw):.1f}° "
-              f"to {math.degrees(target_yaw):.1f}° (Δ={math.degrees(target_delta_rad):.1f}°)")
+        print(f"[INFO] Ackermann PID rotate: from {math.degrees(start_yaw):.1f}° to {math.degrees(target_yaw):.1f}°")
 
         prev_err = 0.0
         integral = 0.0
@@ -104,33 +108,29 @@ class CmdVelPublisher(Node):
             err = self._angle_diff(target_yaw, odom_sub.yaw)
             if abs(err) <= yaw_tol:
                 break
-
             integral += err * dt
             derivative = (err - prev_err) / dt
-            control = Kp * err + Ki * integral + Kd * derivative
+            control = Kp*err + Ki*integral + Kd*derivative
             prev_err = err
-
             control = max(min(control, 1.5), -1.5)
-
             twist = Twist()
             twist.linear.x = fwd_speed
             twist.angular.z = control
             self.publisher_.publish(twist)
             time.sleep(dt)
-
         self.stop(0.15)
 
     def turn_left(self, speed=0.5, duration=1.0, odom_sub=None):
-        if odom_sub is not None:
-            self._rotate_to_angle(target_delta_rad=math.pi/2, odom_sub=odom_sub)
+        if odom_sub:
+            self._rotate_to_angle(math.pi/2, odom_sub=odom_sub)
         else:
-            self.send_twist(linear_x=0.15, angular_z=+1.0, duration=duration)
+            self.send_twist(0.15, +1.0, duration)
 
     def turn_right(self, speed=0.5, duration=1.0, odom_sub=None):
-        if odom_sub is not None:
-            self._rotate_to_angle(target_delta_rad=-math.pi/2, odom_sub=odom_sub)
+        if odom_sub:
+            self._rotate_to_angle(-math.pi/2, odom_sub=odom_sub)
         else:
-            self.send_twist(linear_x=0.15, angular_z=-1.0, duration=duration)
+            self.send_twist(0.15, -1.0, duration)
 
     def stop(self, duration=1.0):
         twist = Twist()
@@ -144,19 +144,19 @@ class CmdVelPublisher(Node):
 # ---------------- Maze Generation ----------------
 def generate_maze(x_size=None, y_size=None, num_walls=None):
     if x_size is None:
-        x_size = random.randint(6, 30)
+        x_size = random.randint(6,30)
     if y_size is None:
-        y_size = random.randint(6, 30)
+        y_size = random.randint(6,30)
     maze = np.zeros((x_size, y_size), dtype=int)
     if num_walls is None:
-        num_walls = int(x_size * 1.8)
-    wall_indices = random.sample(range(x_size * y_size), num_walls)
+        num_walls = int(x_size*1.8)
+    wall_indices = random.sample(range(x_size*y_size), num_walls)
     for idx in wall_indices:
         row = idx // y_size
         col = idx % y_size
         maze[row, col] = 1
-    start = (random.randint(0, x_size-1), random.randint(0, y_size-1))
-    goal  = (random.randint(0, x_size-1), random.randint(0, y_size-1))
+    start = (random.randint(0,x_size-1), random.randint(0,y_size-1))
+    goal  = (random.randint(0,x_size-1), random.randint(0,y_size-1))
     maze[start] = 0
     maze[goal] = 0
     return maze, start, goal
@@ -191,14 +191,19 @@ def bfs_path(maze, start, goal):
     return path
 
 # ---------------- Live Plot ----------------
-def plot_maze(maze, start, goal, path=None, current=None):
+def plot_maze(maze, start, goal, path=None, robot_pos=None):
     plt.clf()
     plt.imshow(maze, cmap="gray_r")
     if path:
         px, py = zip(*path)
         plt.plot(py, px, "b.-", label="Path")
-    if current:
-        plt.plot(current[1], current[0], "ro", label="Robot")
+    if robot_pos:
+        x, y = robot_pos
+        gx = int(round(x / GRID_SIZE))
+        gy = int(round(y / GRID_SIZE))
+        gx = np.clip(gx, 0, maze.shape[0]-1)
+        gy = np.clip(gy, 0, maze.shape[1]-1)
+        plt.plot(gy, gx, "ro", label="Robot")
     plt.plot(start[1], start[0], "go", markersize=10, label="Start")
     plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal")
     plt.legend()
@@ -207,23 +212,25 @@ def plot_maze(maze, start, goal, path=None, current=None):
 
 # ---------------- Map Grid Navigation ----------------
 def follow_path(node, path, odom_sub, maze, start, goal):
+    plt.ion()
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
         dx = nxt[0] - cur[0]
         dy = nxt[1] - cur[1]
 
-        if dx == 1:     # down
+        if dx == 1:      # down
             node.turn_right(duration=0.5, odom_sub=odom_sub)
-        elif dx == -1:  # up
+        elif dx == -1:   # up
             node.turn_left(duration=0.5, odom_sub=odom_sub)
-        elif dy == 1:   # right
+        elif dy == 1:    # right
             node.turn_right(duration=0.5, odom_sub=odom_sub)
-        elif dy == -1:  # left
+        elif dy == -1:   # left
             node.turn_left(duration=0.5, odom_sub=odom_sub)
 
         node.move_distance(GRID_SIZE, odom_sub=odom_sub)
-        plot_maze(maze, start, goal, path, current=nxt)
+        rclpy.spin_once(odom_sub)
+        plot_maze(maze, start, goal, path, robot_pos=(odom_sub.x_pos, odom_sub.y_pos))
 
 # ---------------- Main Program ----------------
 def main():
@@ -235,12 +242,12 @@ def main():
 
     if USE_FIXED_MAP:
         maze = np.array([
-            [0,1,0,0,0,0],
-            [0,1,0,1,1,0],
-            [0,0,0,1,0,0],
-            [0,1,1,1,0,1],
-            [0,0,1,0,0,0],
-            [0,1,1,1,1,0]
+            [0, 1, 0, 0, 0, 0],
+            [0, 1, 0, 1, 1, 0],
+            [0, 0, 0, 1, 0, 0],
+            [0, 1, 1, 1, 0, 1],
+            [0, 0, 1, 0, 0, 0],
+            [0, 1, 1, 1, 1, 0]
         ])
         start = (0,0)
         goal  = (1,5)
@@ -249,9 +256,8 @@ def main():
 
     path = bfs_path(maze, start, goal)
 
-    plt.ion()
     plt.figure()
-    plot_maze(maze, start, goal, path, current=start)
+    plot_maze(maze, start, goal, path, robot_pos=(odom_reader.x_pos, odom_reader.y_pos))
 
     follow_path(node, path, odom_sub=odom_reader, maze=maze, start=start, goal=goal)
 
@@ -259,7 +265,6 @@ def main():
     node.destroy_node()
     odom_reader.destroy_node()
     rclpy.shutdown()
-
     plt.ioff()
     plt.show()
 
