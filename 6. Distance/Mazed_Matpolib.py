@@ -129,26 +129,23 @@ def bfs_path(maze, start, goal):
     path.reverse()
     return path
 
-# ---------------- Display Maze ----------------
-def print_maze(maze, start, goal, path=None):
-    for i in range(maze.shape[0]):
-        line = ""
-        for j in range(maze.shape[1]):
-            if (i,j) == start:
-                line += " R "
-            elif (i,j) == goal:
-                line += " G "
-            elif path and (i,j) in path:
-                line += " x "
-            elif maze[i,j] == 1:
-                line += " 0 "
-            else:
-                line += " . "
-        print(line)
-    print("\n")
+# ---------------- Live Plot ----------------
+def plot_maze(maze, start, goal, path=None, current=None):
+    plt.clf()
+    plt.imshow(maze, cmap="gray_r")
+    if path:
+        px, py = zip(*path)
+        plt.plot(py, px, "b.-", label="Path")
+    if current:
+        plt.plot(current[1], current[0], "ro", label="Robot")
+    plt.plot(start[1], start[0], "go", markersize=10, label="Start")
+    plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal")
+    plt.legend()
+    plt.pause(0.1)
 
 # ---------------- Map Grid Navigation ----------------
-def follow_path(node, path, odom_sub):
+def follow_path(node, path, odom_sub, maze, start, goal):
+    plt.ion()
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
@@ -164,7 +161,8 @@ def follow_path(node, path, odom_sub):
         elif dy == -1:  # left
             node.turn_left(duration=0.5)
 
-        node.move_distance(GRID_SIZE, odom_sub=odom_sub)  # <<< use GRID_SIZE instead of hard-coded 0.2
+        node.move_distance(GRID_SIZE, odom_sub=odom_sub)
+        plot_maze(maze, start, goal, path, current=nxt)
 
 # ---------------- Main Program ----------------
 def main():
@@ -188,19 +186,19 @@ def main():
     else:
         maze, start, goal = generate_maze()
 
-    print("Original Maze:")
-    print_maze(maze, start, goal)
-
     path = bfs_path(maze, start, goal)
-    print("Solution Path:")
-    print_maze(maze, start, goal, path)
 
-    follow_path(node, path, odom_sub=odom_reader)
+    plt.figure()
+    plot_maze(maze, start, goal, path, current=start)
+
+    follow_path(node, path, odom_sub=odom_reader, maze=maze, start=start, goal=goal)
 
     node.stop()
     node.destroy_node()
     odom_reader.destroy_node()
     rclpy.shutdown()
+    plt.ioff()
+    plt.show()
 
 if __name__ == "__main__":
     main()
