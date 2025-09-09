@@ -22,7 +22,7 @@ import numpy as np
 import random
 from collections import deque
 import matplotlib.pyplot as plt
-import math  # --- NEW: for yaw math
+import math
 
 # ---------------- Try importing tf_transformations ----------------
 try:
@@ -32,18 +32,15 @@ except ImportError:
     print("       pip install tf-transformations OR sudo apt install ros-${ROS_DISTRO}-tf-transformations")
 
 # ---------------- CONFIG ----------------
-GRID_SIZE = 0.2  # <<< Define a unique variable for grid cell size (was hard-coded before)
+GRID_SIZE = 0.2  # Unique variable for grid size
 
 # ---------------- Odometry Reader ----------------
 class OdometryReader(Node):
-    """Subscribes to odometry topic to read robot X,Y position"""
     def __init__(self, topic='/odom'):
         super().__init__('odom_reader')
         self.x_pos = 0.0
         self.y_pos = 0.0
-        self.yaw = 0.0  # track heading (rad)
-        self.start_x = None
-        self.start_y = None
+        self.yaw = 0.0
         self.subscription = self.create_subscription(
             Odometry,
             topic,
@@ -52,14 +49,8 @@ class OdometryReader(Node):
         )
 
     def odom_callback(self, msg):
-        if self.start_x is None:
-            self.start_x = msg.pose.pose.position.x
-            self.start_y = msg.pose.pose.position.y
-
-        self.x_pos = msg.pose.pose.position.x - self.start_x
-        self.y_pos = msg.pose.pose.position.y - self.start_y
-
-        # quaternion -> yaw
+        self.x_pos = msg.pose.pose.position.x
+        self.y_pos = msg.pose.pose.position.y
         q = msg.pose.pose.orientation
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -78,37 +69,31 @@ class CmdVelPublisher(Node):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            time.sleep(0.05)
+            time.sleep(0.1)
 
-    def move_distance(self, distance, odom_sub, fwd_speed=0.15):
-        """Move forward a specific distance using odometry"""
+    def move_distance(self, distance, odom_sub, speed=0.2):
+        print(f"[INFO] Moving {distance} meters at speed {speed}")
         rclpy.spin_once(odom_sub)
         start_x = odom_sub.x_pos
-        start_y = odom_sub.y_pos
-        traveled = 0.0
-
-        while rclpy.ok() and traveled < abs(distance):
-            dx = odom_sub.x_pos - start_x
-            dy = odom_sub.y_pos - start_y
-            traveled = math.hypot(dx, dy)
+        while rclpy.ok() and abs(odom_sub.x_pos - start_x) < abs(distance):
             direction = 1 if distance > 0 else -1
-            self.send_twist(linear_x=fwd_speed*direction, angular_z=0.0, duration=0.05)
+            self.send_twist(linear_x=speed*direction, angular_z=0.0, duration=0.1)
             rclpy.spin_once(odom_sub)
+        self.stop(0.1)
 
-        self.stop(0.05)
-
-    # --- NEW (PID helper)
     @staticmethod
     def _angle_diff(a, b):
         return math.atan2(math.sin(a - b), math.cos(a - b))
 
-    # --- PID rotation for Ackermann
     def _rotate_to_angle(self, target_delta_rad, odom_sub,
                          fwd_speed=0.15, yaw_tol=0.05,
                          Kp=1.2, Ki=0.0, Kd=0.3):
         rclpy.spin_once(odom_sub)
         start_yaw = odom_sub.yaw
         target_yaw = start_yaw + target_delta_rad
+
+        print(f"[INFO] Ackermann PID rotate: from {math.degrees(start_yaw):.1f}° "
+              f"to {math.degrees(target_yaw):.1f}° (Δ={math.degrees(target_delta_rad):.1f}°)")
 
         prev_err = 0.0
         integral = 0.0
@@ -122,8 +107,9 @@ class CmdVelPublisher(Node):
 
             integral += err * dt
             derivative = (err - prev_err) / dt
+            control = Kp * err + Ki * integral + Kd * derivative
             prev_err = err
-            control = Kp*err + Ki*integral + Kd*derivative
+
             control = max(min(control, 1.5), -1.5)
 
             twist = Twist()
@@ -132,45 +118,45 @@ class CmdVelPublisher(Node):
             self.publisher_.publish(twist)
             time.sleep(dt)
 
-        self.stop(0.05)
+        self.stop(0.15)
 
-    def turn_left(self, odom_sub=None):
+    def turn_left(self, speed=0.5, duration=1.0, odom_sub=None):
         if odom_sub is not None:
-            self._rotate_to_angle(math.pi/2, odom_sub)
+            self._rotate_to_angle(target_delta_rad=math.pi/2, odom_sub=odom_sub)
         else:
-            self.send_twist(0.15, +1.0, 1.0)
+            self.send_twist(linear_x=0.15, angular_z=+1.0, duration=duration)
 
-    def turn_right(self, odom_sub=None):
+    def turn_right(self, speed=0.5, duration=1.0, odom_sub=None):
         if odom_sub is not None:
-            self._rotate_to_angle(-math.pi/2, odom_sub)
+            self._rotate_to_angle(target_delta_rad=-math.pi/2, odom_sub=odom_sub)
         else:
-            self.send_twist(0.15, -1.0, 1.0)
+            self.send_twist(linear_x=0.15, angular_z=-1.0, duration=duration)
 
-    def stop(self, duration=0.2):
+    def stop(self, duration=1.0):
         twist = Twist()
         twist.linear.x = 0.0
         twist.angular.z = 0.0
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            time.sleep(0.05)
+            time.sleep(0.1)
 
 # ---------------- Maze Generation ----------------
 def generate_maze(x_size=None, y_size=None, num_walls=None):
     if x_size is None:
-        x_size = random.randint(6,30)
+        x_size = random.randint(6, 30)
     if y_size is None:
-        y_size = random.randint(6,30)
-    maze = np.zeros((x_size,y_size), dtype=int)
+        y_size = random.randint(6, 30)
+    maze = np.zeros((x_size, y_size), dtype=int)
     if num_walls is None:
-        num_walls = int(x_size*1.8)
-    wall_indices = random.sample(range(x_size*y_size), num_walls)
+        num_walls = int(x_size * 1.8)
+    wall_indices = random.sample(range(x_size * y_size), num_walls)
     for idx in wall_indices:
         row = idx // y_size
         col = idx % y_size
         maze[row, col] = 1
-    start = (random.randint(0,x_size-1), random.randint(0,y_size-1))
-    goal = (random.randint(0,x_size-1), random.randint(0,y_size-1))
+    start = (random.randint(0, x_size-1), random.randint(0, y_size-1))
+    goal  = (random.randint(0, x_size-1), random.randint(0, y_size-1))
     maze[start] = 0
     maze[goal] = 0
     return maze, start, goal
@@ -205,44 +191,39 @@ def bfs_path(maze, start, goal):
     return path
 
 # ---------------- Live Plot ----------------
-def plot_maze(maze, start, goal, robot_pos, path=None):
+def plot_maze(maze, start, goal, path=None, current=None):
     plt.clf()
     plt.imshow(maze, cmap="gray_r")
     if path:
         px, py = zip(*path)
         plt.plot(py, px, "b.-", label="Path")
-    if robot_pos:
-        plt.plot(robot_pos[1], robot_pos[0], "ro", label="Robot")
+    if current:
+        plt.plot(current[1], current[0], "ro", label="Robot")
     plt.plot(start[1], start[0], "go", markersize=10, label="Start")
     plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal")
     plt.legend()
+    plt.draw()
     plt.pause(0.001)
 
 # ---------------- Map Grid Navigation ----------------
 def follow_path(node, path, odom_sub, maze, start, goal):
-    plt.ion()
-    for i in range(1,len(path)):
+    for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
+        dx = nxt[0] - cur[0]
+        dy = nxt[1] - cur[1]
 
-        # calculate target in meters
-        target_x = nxt[0]*GRID_SIZE
-        target_y = nxt[1]*GRID_SIZE
+        if dx == 1:     # down
+            node.turn_right(duration=0.5, odom_sub=odom_sub)
+        elif dx == -1:  # up
+            node.turn_left(duration=0.5, odom_sub=odom_sub)
+        elif dy == 1:   # right
+            node.turn_right(duration=0.5, odom_sub=odom_sub)
+        elif dy == -1:  # left
+            node.turn_left(duration=0.5, odom_sub=odom_sub)
 
-        # rotate toward target
-        dx = target_x - odom_sub.x_pos
-        dy = target_y - odom_sub.y_pos
-        target_angle = math.atan2(dy, dx)
-        angle_diff = node._angle_diff(target_angle, odom_sub.yaw)
-        node._rotate_to_angle(angle_diff, odom_sub)
-
-        # move toward target
-        distance = math.hypot(dx, dy)
-        node.move_distance(distance, odom_sub)
-
-        # update plot
-        robot_grid = (odom_sub.x_pos/GRID_SIZE, odom_sub.y_pos/GRID_SIZE)
-        plot_maze(maze, start, goal, robot_pos=robot_grid, path=path)
+        node.move_distance(GRID_SIZE, odom_sub=odom_sub)
+        plot_maze(maze, start, goal, path, current=nxt)
 
 # ---------------- Main Program ----------------
 def main():
@@ -262,23 +243,25 @@ def main():
             [0,1,1,1,1,0]
         ])
         start = (0,0)
-        goal = (1,5)
+        goal  = (1,5)
     else:
         maze, start, goal = generate_maze()
 
     path = bfs_path(maze, start, goal)
 
+    plt.ion()
     plt.figure()
-    plot_maze(maze, start, goal, robot_pos=(0,0), path=path)
+    plot_maze(maze, start, goal, path, current=start)
 
-    follow_path(node, path, odom_reader, maze, start, goal)
+    follow_path(node, path, odom_sub=odom_reader, maze=maze, start=start, goal=goal)
 
     node.stop()
     node.destroy_node()
     odom_reader.destroy_node()
     rclpy.shutdown()
+
     plt.ioff()
     plt.show()
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
