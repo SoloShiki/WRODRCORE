@@ -64,11 +64,11 @@ class CmdVelPublisher(Node):
         self.send_twist(0.0, speed, duration)
 
     def turn_right(self, speed=0.5, duration=1.0):
-       # print(f"[INFO] Turning right for {duration}s at speed {speed}")
+        print(f"[INFO] Turning right for {duration}s at speed {speed}")
         self.send_twist(0.0, -speed, duration)
 
     def stop(self, duration=1.0):
-        print(f"[INFO] Stopping for {duration}s")
+       # print(f"[INFO] Stopping for {duration}s")
         twist = Twist()
         twist.linear.x = 0.0
         twist.angular.z = 0.0
