@@ -7,9 +7,16 @@ import numpy as np
 import random
 from collections import deque
 
+# ---------------- Try importing tf_transformations ----------------
+try:
+    from tf_transformations import euler_from_quaternion
+except ImportError:
+    print("[WARN] tf_transformations not found. Install with:")
+    print("       pip install tf-transformations OR sudo apt install ros-${ROS_DISTRO}-tf-transformations")
+
 # ---------------- Odometry Reader ----------------
 class OdometryReader(Node):
-    """Subscribes to odometry topic to read robot X position"""
+    """Subscribes to odometry topic to read robot X,Y position"""
     def __init__(self, topic='/odom'):
         super().__init__('odom_reader')
         self.x_pos = 0.0
@@ -41,9 +48,9 @@ class CmdVelPublisher(Node):
             time.sleep(0.1)
 
     # Movement functions
-    def move_distance(self, distance, speed=0.2):
-        """Move forward/backward a specific distance using odometry (X axis only for simplicity)"""
-        odom_sub = OdometryReader()
+    def move_distance(self, distance, odom_sub, speed=0.2):
+        """Move forward/backward a specific distance using odometry (X axis only)"""
+        print(f"[INFO] Moving {distance} meters at speed {speed}")
         rclpy.spin_once(odom_sub)
         start_x = odom_sub.x_pos
         while rclpy.ok() and abs(odom_sub.x_pos - start_x) < abs(distance):
@@ -53,12 +60,15 @@ class CmdVelPublisher(Node):
         self.stop()
 
     def turn_left(self, speed=0.5, duration=1.0):
+        print(f"[INFO] Turning left for {duration}s at speed {speed}")
         self.send_twist(0.0, speed, duration)
 
     def turn_right(self, speed=0.5, duration=1.0):
+        print(f"[INFO] Turning right for {duration}s at speed {speed}")
         self.send_twist(0.0, -speed, duration)
 
     def stop(self, duration=1.0):
+        print(f"[INFO] Stopping for {duration}s")
         twist = Twist()
         twist.linear.x = 0.0
         twist.angular.z = 0.0
@@ -135,7 +145,7 @@ def print_maze(maze, start, goal, path=None):
     print("\n")
 
 # ---------------- Map Grid Navigation ----------------
-def follow_path(node, path, cell_size=0.2):
+def follow_path(node, path, odom_sub, cell_size=0.2):
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
@@ -151,17 +161,17 @@ def follow_path(node, path, cell_size=0.2):
         elif dy == -1:  # left
             node.turn_left(duration=0.5)
 
-        node.move_distance(cell_size)
+        node.move_distance(cell_size, odom_sub=odom_sub)
 
 # ---------------- Main Program ----------------
 def main():
     rclpy.init()
     node = CmdVelPublisher()
+    odom_reader = OdometryReader()
 
     USE_FIXED_MAP = True  # Set to False to use random map
 
     if USE_FIXED_MAP:
-        # Fixed 6x6 maze example
         maze = np.array([
             [0, 1, 0, 0, 0, 0],
             [0, 1, 0, 1, 1, 0],
@@ -182,10 +192,11 @@ def main():
     print("Solution Path:")
     print_maze(maze, start, goal, path)
 
-    follow_path(node, path, cell_size=0.2)
+    follow_path(node, path, odom_sub=odom_reader, cell_size=0.2)
 
     node.stop()
     node.destroy_node()
+    odom_reader.destroy_node()
     rclpy.shutdown()
 
 if __name__ == "__main__":
