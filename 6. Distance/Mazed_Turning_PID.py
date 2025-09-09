@@ -72,7 +72,7 @@ class CmdVelPublisher(Node):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            time.sleep(0.1)
+            plt.pause(0.01)  # ← allow GUI update
 
     def move_distance(self, distance, odom_sub, speed=0.2):
         """Move forward/backward a specific distance using odometry (X axis only)"""
@@ -83,6 +83,7 @@ class CmdVelPublisher(Node):
             direction = 1 if distance > 0 else -1
             self.send_twist(linear_x=speed*direction, angular_z=0.0, duration=0.1)
             rclpy.spin_once(odom_sub)
+            plt.pause(0.01)  # ← allow GUI update
         self.stop(0.1)
 
     # --- NEW (PID): helper for angle wrapping
@@ -134,7 +135,7 @@ class CmdVelPublisher(Node):
             twist.angular.z = control
             self.publisher_.publish(twist)
 
-            time.sleep(dt)
+            plt.pause(dt)  # ← allow GUI update
 
         self.stop(0.15)
 
@@ -161,7 +162,7 @@ class CmdVelPublisher(Node):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.publisher_.publish(twist)
-            time.sleep(0.1)
+            plt.pause(0.01)  # ← allow GUI update
 
 # ---------------- Maze Generation ----------------
 def generate_maze(x_size=None, y_size=None, num_walls=None):
@@ -224,7 +225,7 @@ def plot_maze(maze, start, goal, path=None, current=None):
     plt.plot(start[1], start[0], "go", markersize=10, label="Start")
     plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal")
     plt.legend()
-    plt.pause(0.1)
+    plt.pause(0.01)  # ← allow GUI update
 
 # ---------------- Map Grid Navigation ----------------
 def follow_path(node, path, odom_sub, maze, start, goal):
@@ -271,6 +272,7 @@ def main():
 
     path = bfs_path(maze, start, goal)
 
+    plt.ion()
     plt.figure()
     plot_maze(maze, start, goal, path, current=start)
 
