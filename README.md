@@ -12,7 +12,10 @@
 5. ***Turning***
 * Motion_control_C.py
 7. ***Distance***
-* Mazed_test.py
+* [Mazed_test.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/6.%20Distance/Mazed_test.py) Solve a simple mazed , robot only avances each grid
+* [Mazed_Printing.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/6.%20Distance/Mazed_Printing.py) Solve a simple mazed , robot only avances each grid, this program prints each step
+* [Mazed_Ascci_disp.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/6.%20Distance/Mazed_Ascci_disp.py) This program clears the screen and provide an updated ascii map for the robot
+* [Mazed_Matpolib.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/6.%20Distance/Mazed_Matpolib.py) This program  create a visual map, create a variable defining the grid
 * Mazed_test_B.py
 * Motion_Control_D.py
 * Motion_Control_E_Lidar.py
