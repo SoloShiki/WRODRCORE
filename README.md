@@ -1,0 +1,19 @@
+1. ***Talker:***  (initial tests)
+* [publisher.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/1.%20Talker/publisher.py) Simple node to publish a hello world
+* [subscriber.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/1.%20Talker/subscriber.py) Simple node to subcscribe to the publisher and show data   
+2. ***Talker_B***
+* [rpm_pub.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/2.%20Talker_B/rpm_pub.py) Simple node to publish a variable like RPM
+* [speed_pub.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/2.%20Talker_B/speed_calc.py) Simple node to subcscribe to rpm and pusblis speed
+3. ***Motion***
+* [motion_simple.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/3.%20Motion/Motion_Simple.py) Run foward for 2 seconds and stop
+* Motion_controll.py
+4. ***Motion_B***
+* Motion_control.py
+5. ***Turning***
+* Motion_control_C.py
+7. ***Distance***
+* Mazed_test.py
+* Mazed_test_B.py
+* Motion_Control_D.py
+* Motion_Control_E_Lidar.py
+* Motion_Control_F_Lidar_Test.py
