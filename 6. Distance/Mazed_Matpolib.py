@@ -15,6 +15,9 @@ except ImportError:
     print("[WARN] tf_transformations not found. Install with:")
     print("       pip install tf-transformations OR sudo apt install ros-${ROS_DISTRO}-tf-transformations")
 
+# ---------------- CONFIG ----------------
+GRID_SIZE = 0.2  # <<< Define a unique variable for grid cell size (was hard-coded before)
+
 # ---------------- Odometry Reader ----------------
 class OdometryReader(Node):
     """Subscribes to odometry topic to read robot X,Y position"""
@@ -50,6 +53,7 @@ class CmdVelPublisher(Node):
 
     # Movement functions
     def move_distance(self, distance, odom_sub, speed=0.2):
+        """Move forward/backward a specific distance using odometry (X axis only)"""
         print(f"[INFO] Moving {distance} meters at speed {speed}")
         rclpy.spin_once(odom_sub)
         start_x = odom_sub.x_pos
@@ -57,7 +61,7 @@ class CmdVelPublisher(Node):
             direction = 1 if distance > 0 else -1
             self.send_twist(linear_x=speed*direction, angular_z=0.0, duration=0.1)
             rclpy.spin_once(odom_sub)
-        self.stop(0.1) # small stop
+        self.stop(0.1)
 
     def turn_left(self, speed=0.5, duration=1.0):
         print(f"[INFO] Turning left for {duration}s at speed {speed}")
@@ -125,15 +129,32 @@ def bfs_path(maze, start, goal):
     path.reverse()
     return path
 
-# ---------------- Map Grid Navigation + Live Visualization ----------------
-def follow_path(node, path, odom_sub, cell_size=0.2, maze=None, start=None, goal=None, ax=None):
+# ---------------- Display Maze ----------------
+def print_maze(maze, start, goal, path=None):
+    for i in range(maze.shape[0]):
+        line = ""
+        for j in range(maze.shape[1]):
+            if (i,j) == start:
+                line += " R "
+            elif (i,j) == goal:
+                line += " G "
+            elif path and (i,j) in path:
+                line += " x "
+            elif maze[i,j] == 1:
+                line += " 0 "
+            else:
+                line += " . "
+        print(line)
+    print("\n")
+
+# ---------------- Map Grid Navigation ----------------
+def follow_path(node, path, odom_sub):
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
         dx = nxt[0] - cur[0]
         dy = nxt[1] - cur[1]
 
-        # Send robot movement
         if dx == 1:     # down
             node.turn_right(duration=0.5)
         elif dx == -1:  # up
@@ -143,21 +164,7 @@ def follow_path(node, path, odom_sub, cell_size=0.2, maze=None, start=None, goal
         elif dy == -1:  # left
             node.turn_left(duration=0.5)
 
-        node.move_distance(cell_size, odom_sub=odom_sub)
-
-        # Update visualization (robot moves step by step)
-        if maze is not None and ax is not None:
-            img = np.copy(maze)
-            img[start] = 2
-            img[goal] = 3
-            for visited in path[:i+1]:  # leave trail
-                img[visited] = 5
-            img[nxt] = 4  # current robot position
-
-            ax.clear()
-            ax.imshow(img, cmap="tab20", origin="upper")
-            ax.set_title("Maze Navigation (Live)")
-            plt.pause(0.4)
+        node.move_distance(GRID_SIZE, odom_sub=odom_sub)  # <<< use GRID_SIZE instead of hard-coded 0.2
 
 # ---------------- Main Program ----------------
 def main():
@@ -181,15 +188,14 @@ def main():
     else:
         maze, start, goal = generate_maze()
 
+    print("Original Maze:")
+    print_maze(maze, start, goal)
+
     path = bfs_path(maze, start, goal)
+    print("Solution Path:")
+    print_maze(maze, start, goal, path)
 
-    # Prepare matplotlib figure
-    fig, ax = plt.subplots()
-
-    # Move robot while updating visualization live
-    follow_path(node, path, odom_sub=odom_reader, cell_size=0.2, maze=maze, start=start, goal=goal, ax=ax)
-
-    plt.show()  # keep window open after movement finishes
+    follow_path(node, path, odom_sub=odom_reader)
 
     node.stop()
     node.destroy_node()
