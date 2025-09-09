@@ -57,14 +57,14 @@ class CmdVelPublisher(Node):
             direction = 1 if distance > 0 else -1
             self.send_twist(linear_x=speed*direction, angular_z=0.0, duration=0.1)
             rclpy.spin_once(odom_sub)
-        self.stop()
+        self.stop(0.1) #only for 0.1 sec
 
     def turn_left(self, speed=0.5, duration=1.0):
         print(f"[INFO] Turning left for {duration}s at speed {speed}")
         self.send_twist(0.0, speed, duration)
 
     def turn_right(self, speed=0.5, duration=1.0):
-        print(f"[INFO] Turning right for {duration}s at speed {speed}")
+       # print(f"[INFO] Turning right for {duration}s at speed {speed}")
         self.send_twist(0.0, -speed, duration)
 
     def stop(self, duration=1.0):
