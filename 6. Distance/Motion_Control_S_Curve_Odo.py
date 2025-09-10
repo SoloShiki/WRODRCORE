@@ -69,7 +69,12 @@ def main():
 
     while rclpy.ok():
         # Drive in alternating S pattern
-        node.send_twist(linear_x=speed, angular_z=direction * max_angle, duration=segment_time)
+        if direction == 1
+            node.send_twist(linear_x=-speed, angular_z=max_angle, duration=segment_time)
+        else
+            node.send_twist(linear_x=-speed, angular_z=-max_angle, duration=segment_time)
+            
+        
 
         # Update odometry
         rclpy.spin_once(odom_reader, timeout_sec=0.1)
