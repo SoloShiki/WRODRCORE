@@ -70,7 +70,7 @@ def main():
 
     while rclpy.ok():
         # Drive one S-segment
-        node.send_twist(linear_x=speed, angular_z=direction * max_angle, duration=segment_time)
+        node.send_twist(linear_x=-speed, angular_z=direction * max_angle, duration=segment_time)
 
         # Flip steering for next segment
         direction *= -1
