@@ -72,8 +72,8 @@ def main():
 
     start_time = time.time()
     while time.time() - start_time < total_time:
-        node.turn_left(speed=speed, duration=segment_time, angle=angle)
-        node.turn_right(speed=speed, duration=segment_time, angle=angle)
+        node.turn_left(speed=-speed, duration=segment_time, angle=angle)
+        node.turn_right(speed=-speed, duration=segment_time, angle=angle)
 
         # 🔎 You can still check odometry updates here
         rclpy.spin_once(odom_reader, timeout_sec=0.1)
