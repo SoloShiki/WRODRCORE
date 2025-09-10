@@ -58,6 +58,7 @@ def main():
     target_distance = 3.0   # meters
     speed = 0.3             # m/s
     max_angle = math.radians(30)  # ±30 degrees steering
+    max_angle = 10  # ±30 degrees steering
     segment_time = 1.5      # seconds per segment
 
     # Get starting odometry
