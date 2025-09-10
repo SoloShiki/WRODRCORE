@@ -45,10 +45,10 @@ class CmdVelPublisher(Node):
         self.send_twist(linear_x=-speed, angular_z=0.0, duration=duration)
 
     def turn_left(self, speed=0.5, duration=2.0, angle=0.5):
-        self.send_twist(linear_x=-speed, angular_z=angle, duration=duration)
+        self.send_twist(linear_x=speed, angular_z=-angle, duration=duration)
 
     def turn_right(self, speed=0.5, duration=2.0, angle=0.5):
-        self.send_twist(linear_x=-speed, angular_z=-angle, duration=duration)
+        self.send_twist(linear_x=speed, angular_z=angle, duration=duration)
 
     def stop(self, duration=1.0):
         twist = Twist()
