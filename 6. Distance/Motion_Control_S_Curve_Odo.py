@@ -69,9 +69,9 @@ def main():
 
     while rclpy.ok():
         # Drive in alternating S pattern
-        if direction == 1
+        if direction == 1:
             node.send_twist(linear_x=-speed, angular_z=max_angle, duration=segment_time)
-        else
+        else:
             node.send_twist(linear_x=-speed, angular_z=-max_angle, duration=segment_time)
             
         
