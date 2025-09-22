@@ -1,16 +1,17 @@
+#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Imu
-import math, time
-import tf_transformations
-
+import math
+import time
+from transforms3d.euler import quat2euler  # pip3 install transforms3d
 
 def quaternion_to_yaw(q):
-    """Convert quaternion (IMU or Odom) to yaw (rotation around Z axis)."""
-    _, _, yaw = tf_transformations.euler_from_quaternion([q.x, q.y, q.z, q.w])
+    """Convert quaternion to yaw (rotation around Z axis)."""
+    # transforms3d expects quaternion in (w, x, y, z) order
+    yaw, _, _ = quat2euler([q.w, q.x, q.y, q.z])
     return yaw
-
 
 class IMUReader(Node):
     """Subscribes to IMU to get yaw orientation"""
@@ -26,7 +27,6 @@ class IMUReader(Node):
 
     def imu_callback(self, msg):
         self.yaw = quaternion_to_yaw(msg.orientation)
-
 
 class CmdVelPublisher(Node):
     def __init__(self):
@@ -63,7 +63,8 @@ class CmdVelPublisher(Node):
         while rclpy.ok():
             rclpy.spin_once(imu_sub)
             error = target_yaw - imu_sub.yaw
-            error = math.atan2(math.sin(error), math.cos(error))  # normalize [-pi, pi]
+            # normalize error to [-pi, pi]
+            error = math.atan2(math.sin(error), math.cos(error))
 
             if abs(error) < math.radians(2.0):  # within 2° tolerance
                 break
@@ -73,27 +74,18 @@ class CmdVelPublisher(Node):
         self.stop()
         print("Turn complete")
 
-
 def main():
     rclpy.init()
     node = CmdVelPublisher()
 
-    # Example: Turn 90° left using IMU
+    # Example: Turn 90° left
     node.turn_angle_imu(angle_deg=90, angular_speed=0.5)
-    time.sleep(3)   # wait 3 seconds
 
-    # Example: Turn back -90° right using IMU
-    node.turn_angle_imu(angle_deg=-180, angular_speed=0.5)
-    
-    time.sleep(3)   # wait 3 seconds
-    
-    node.turn_angle_imu(angle_deg=90, angular_speed=0.5)
-    
-    
+    # Example: Turn 90° right
+    node.turn_angle_imu(angle_deg=-90, angular_speed=0.5)
 
     node.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
