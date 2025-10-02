@@ -29,19 +29,8 @@ class CmdVelPublisher(Node):
         super().__init__('cmd_vel_publisher')
         self.publisher_ = self.create_publisher(Twist, '/controller/cmd_vel', 10)
 
-    def send_twist(self, linear_x=0.0, angular_z=0.0, duration=0.1):
-        """Send a velocity command for a specific duration"""
-        twist = Twist()
-        twist.linear.x = linear_x
-        twist.angular.z = angular_z
-
-        end_time = time.time() + duration
-        while time.time() < end_time:
-            self.publisher_.publish(twist)
-            time.sleep(0.05)
-
     def stop(self, duration=1.0):
-        """Stop robot"""
+        """Stop robot safely"""
         twist = Twist()
         end_time = time.time() + duration
         while time.time() < end_time:
@@ -50,20 +39,24 @@ class CmdVelPublisher(Node):
 
     # ------------------- Distance-based movement -------------------
     def move_distance(self, target_distance, speed=0.2, odom_topic='/odom'):
-        """Move a specific distance in meters using Euclidean distance (x,y)."""
+        """Move a specific distance in meters using odometry feedback."""
         odom_sub = OdometryReader(topic=odom_topic)
 
-        # Wait for odometry to be ready
+        # Wait until odometry is available
         while odom_sub.x_pos is None or odom_sub.y_pos is None:
             rclpy.spin_once(odom_sub, timeout_sec=0.1)
 
-        start_x = odom_sub.x_pos
-        start_y = odom_sub.y_pos
-
+        start_x, start_y = odom_sub.x_pos, odom_sub.y_pos
         print(f"Starting position: x={start_x:.2f}, y={start_y:.2f}")
 
+        twist = Twist()
+        twist.linear.x = speed
+
+        rate_hz = 20   # publish at 20 Hz
+        dt = 1.0 / rate_hz
+
         while rclpy.ok():
-            rclpy.spin_once(odom_sub, timeout_sec=0.1)
+            rclpy.spin_once(odom_sub, timeout_sec=0.01)
             if odom_sub.x_pos is None or odom_sub.y_pos is None:
                 continue
 
@@ -76,7 +69,9 @@ class CmdVelPublisher(Node):
             if dist >= target_distance:
                 break
 
-            self.send_twist(linear_x=speed, angular_z=0.0, duration=0.1)
+            # continuously publish velocity command
+            self.publisher_.publish(twist)
+            time.sleep(dt)
 
         self.stop()
         print(f"✅ Target reached: {dist:.2f} m traveled")
@@ -93,7 +88,7 @@ def main():
     rclpy.init()
     node = CmdVelPublisher()
 
-    # Example usage with distance-based movement
+    # Example usage
     node.move_forward(distance=2.0, speed=0.3)   # Move forward 2 meters
     time.sleep(0.5)
     node.move_backward(distance=1.0, speed=0.3)  # Move backward 1 meter
