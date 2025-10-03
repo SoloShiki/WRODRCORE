@@ -1,81 +1,102 @@
 #!/usr/bin/env python3
-# compare_odom_tf.py
 import rclpy
-import time
-import math
 from rclpy.node import Node
+from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from tf2_ros import Buffer, TransformListener
-from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
+import time, math
 
-class CompareOdomTF(Node):
+
+class OdometryReader(Node):
+    """Subscribes to odometry topic to read X and Y position"""
+    def __init__(self, topic='/odom'):
+        super().__init__('odom_reader')
+        self.x_pos = None
+        self.y_pos = None
+        self.subscription = self.create_subscription(
+            Odometry,
+            topic,
+            self.odom_callback,
+            10
+        )
+
+    def odom_callback(self, msg):
+        self.x_pos = msg.pose.pose.position.x
+        self.y_pos = msg.pose.pose.position.y
+
+
+class CmdVelPublisher(Node):
     def __init__(self):
-        super().__init__('compare_odom_tf')
-        self.odom = None
-        self.start_odom = None
-        self.start_tf = None
+        super().__init__('cmd_vel_publisher')
+        self.publisher_ = self.create_publisher(Twist, '/controller/cmd_vel', 10)
 
-        self.create_subscription(Odometry, '/odom', self.odom_cb, 10)
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+    def stop(self, duration=1.0):
+        """Stop robot safely"""
+        twist = Twist()
+        end_time = time.time() + duration
+        while time.time() < end_time:
+            self.publisher_.publish(twist)
+            time.sleep(0.05)
 
-        self.odom_frame = 'odom'
-        self.base_frame = 'base_footprint'
+    # ------------------- Distance-based movement -------------------
+    def move_distance(self, target_distance, speed=0.2, odom_topic='/odom'):
+        """Move a specific distance in meters using odometry feedback."""
+        odom_sub = OdometryReader(topic=odom_topic)
 
-        self.timer = self.create_timer(0.1, self.timer_cb)
-        self.get_logger().info("Waiting for odom and TF...")
+        # Wait until odometry is available
+        while odom_sub.x_pos is None or odom_sub.y_pos is None:
+            rclpy.spin_once(odom_sub, timeout_sec=0.1)
 
-    def odom_cb(self, msg):
-        self.odom = msg
+        start_x, start_y = odom_sub.x_pos, odom_sub.y_pos
+        print(f"Starting position: x={start_x:.2f}, y={start_y:.2f}")
 
-    def lookup_tf(self):
-        try:
-            trans = self.tf_buffer.lookup_transform(self.odom_frame, self.base_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.5))
-            return trans
-        except (LookupException, ConnectivityException, ExtrapolationException):
-            return None
+        twist = Twist()
+        twist.linear.x = speed
 
-    def timer_cb(self):
-        if self.odom is None:
-            return
+        rate_hz = 20   # publish at 20 Hz
+        dt = 1.0 / rate_hz
 
-        tf_trans = self.lookup_tf()
-        if self.start_odom is None and tf_trans is not None:
-            # set both starts simultaneously if possible
-            self.start_odom = (self.odom.pose.pose.position.x, self.odom.pose.pose.position.y)
-            self.start_tf = (tf_trans.transform.translation.x, tf_trans.transform.translation.y)
-            self.get_logger().info("Start positions captured.")
-            return
+        while rclpy.ok():
+            rclpy.spin_once(odom_sub, timeout_sec=0.01)
+            if odom_sub.x_pos is None or odom_sub.y_pos is None:
+                continue
 
-        if self.start_odom is None:
-            return
+            dx = odom_sub.x_pos - start_x
+            dy = odom_sub.y_pos - start_y
+            dist = math.sqrt(dx**2 + dy**2)
 
-        # odom distance
-        ox = self.odom.pose.pose.position.x - self.start_odom[0]
-        oy = self.odom.pose.pose.position.y - self.start_odom[1]
-        odom_dist = math.sqrt(ox*ox + oy*oy)
+            print(f"Distance traveled: {dist:.3f} m")
 
-        # tf distance (protected)
-        tf_dist = None
-        if tf_trans is not None and self.start_tf is not None:
-            tx = tf_trans.transform.translation.x - self.start_tf[0]
-            ty = tf_trans.transform.translation.y - self.start_tf[1]
-            tf_dist = math.sqrt(tx*tx + ty*ty)
+            if dist >= target_distance:
+                break
 
-        if tf_dist is None:
-            self.get_logger().info(f"odom: {odom_dist:.3f} m | tf: (no tf yet)")
-        else:
-            self.get_logger().info(f"odom: {odom_dist:.3f} m | tf: {tf_dist:.3f} m")
+            # continuously publish velocity command
+            self.publisher_.publish(twist)
+            time.sleep(dt)
+
+        self.stop()
+        print(f"✅ Target reached: {dist:.2f} m traveled")
+
+    # Wrappers for forward/backward
+    def move_forward(self, distance, speed=0.2, odom_topic='/odom'):
+        self.move_distance(target_distance=distance, speed=abs(speed), odom_topic=odom_topic)
+
+    def move_backward(self, distance, speed=0.2, odom_topic='/odom'):
+        self.move_distance(target_distance=distance, speed=-abs(speed), odom_topic=odom_topic)
+
 
 def main():
     rclpy.init()
-    node = CompareOdomTF()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+    node = CmdVelPublisher()
+
+    # Example usage
+    node.move_forward(distance=2.0, speed=0.3)   # Move forward 2 meters
+    time.sleep(0.5)
+    node.move_backward(distance=1.0, speed=0.3)  # Move backward 1 meter
+
+    node.stop(1)
     node.destroy_node()
     rclpy.shutdown()
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()
