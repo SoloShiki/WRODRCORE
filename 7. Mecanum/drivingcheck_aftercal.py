@@ -22,6 +22,7 @@ class CompareOdomTF(Node):
         self.moving = True          # control flag
         #self.odom_scale = 0.64      # apply your calibration factor here
         self.odom_scale = 0.406      # apply your calibration factor here
+        self.odom_scale = 1.45      # apply your calibration factor here
 
 
         # ---- subscribers/publishers ----
