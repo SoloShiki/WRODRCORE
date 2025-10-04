@@ -20,7 +20,9 @@ class CompareOdomTF(Node):
         self.target_distance = 1.0  # meters
         self.speed = 0.2            # m/s
         self.moving = True          # control flag
-        self.odom_scale = 0.64      # apply your calibration factor here
+        #self.odom_scale = 0.64      # apply your calibration factor here
+        self.odom_scale = 0.406      # apply your calibration factor here
+
 
         # ---- subscribers/publishers ----
         self.create_subscription(Odometry, '/odom', self.odom_cb, 10)
