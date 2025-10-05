@@ -23,3 +23,9 @@
 * Motion_Control_D.py
 * Motion_Control_E_Lidar.py
 * Motion_Control_F_Lidar_Test.py
+
+============================================================
+7. ***Mecanum Tests:***
+* [drivingcheck_aftercal.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/7.%20Mecanum/drivingcheck_aftercal.py) After calibration in new chasis, this is distance testing to 1 M checking for tf and odometry.
+  at the end tf and odometry must agree.
+
