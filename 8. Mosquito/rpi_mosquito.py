@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # receptor_mqtt_fire_action.py
 # Ejecutar en Raspberry Pi 5. Recibe detección de fuego vía MQTT y ejecuta un programa externo.
+# Ahora también imprime un mensaje cuando recibe heartbeat "OK" para testing.
 
 import paho.mqtt.client as mqtt
 import json
@@ -23,12 +24,11 @@ def on_message(client, userdata, msg):
         data = json.loads(payload)
         label = data.get("label", "none")
         
-        # Ignore heartbeat messages
         if label == "none":
-            print(f"[receptor] Heartbeat recibido de {data.get('rpi_id', 'unknown')} → sin acción")
+            # Heartbeat message
+            print(f"[receptor] HEARTBEAT recibido de {data.get('rpi_id', 'unknown')} → estado OK")
             return
 
-        # Act only on fire messages
         if label == "fire":
             rpi_id = data.get("rpi_id", "unknown")
             x = data.get("x", 0)
