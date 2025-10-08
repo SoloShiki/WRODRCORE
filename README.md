@@ -29,4 +29,6 @@
 7. ***Mecanum Tests:***
 * [drivingcheck_aftercal.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/7.%20Mecanum/drivingcheck_aftercal.py) After calibration in new chasis, this is distance testing to 1 M checking for tf and odometry.
   at the end tf and odometry must agree.
+* [Mecanum_Maze_A.py](https://github.com/EdwinMarteZorrilla/WROS_RD_ROS/blob/main/7.%20Mecanum/Mecanum_Maze_A.py) Esto trabaja perfectamente usando el A*, se desplaza 0.4 con la grid en 0.2 M. El mapa lo actualiza perfectmente
+  y es 100% funcional, no gira sino que se va de lado, y se va hacia atras pero siempre va de frente hacia la meta.
 
