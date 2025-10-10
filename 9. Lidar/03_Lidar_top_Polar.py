@@ -14,6 +14,8 @@ MAX_DISTANCE_CM = 100       # max bar length
 AXIS_LIMIT_CM = 105         # x and y axis limits
 ROBOT_WIDTH_CM = 12
 ROBOT_LENGTH_CM = 18
+BAR_WIDTH = 8               # thicker bars
+CAMERA_SIZE_CM = 3          # front sensor square
 
 def wrap_to_pi(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
@@ -77,26 +79,31 @@ class LidarTester(Node):
         )
         self.ax_robot.add_patch(robot_patch)
 
+        # Draw front camera/sensor as small square
+        cam_patch = patches.Rectangle(
+            (ROBOT_LENGTH_CM/2, -CAMERA_SIZE_CM/2),
+            CAMERA_SIZE_CM, CAMERA_SIZE_CM,
+            facecolor='black'
+        )
+        self.ax_robot.add_patch(cam_patch)
+
         # Draw bars (lines) if finite and >0
-        if np.isfinite(dists['Front']) and dists['Front'] > 0:
-            length = min(dists['Front'], MAX_DISTANCE_CM)
-            self.ax_robot.plot([0, length], [0,0], color='red', lw=6)
-            self.ax_robot.text(length+2,0,f"Front\n{length:.1f} cm", color='red')
-
-        if np.isfinite(dists['Right']) and dists['Right'] > 0:
-            length = min(dists['Right'], MAX_DISTANCE_CM)
-            self.ax_robot.plot([0,0],[0,-length], color='blue', lw=6)
-            self.ax_robot.text(0,-length-5,f"Right\n{length:.1f} cm", color='blue', ha='center')
-
-        if np.isfinite(dists['Back']) and dists['Back'] > 0:
-            length = min(dists['Back'], MAX_DISTANCE_CM)
-            self.ax_robot.plot([0,-length],[0,0], color='green', lw=6)
-            self.ax_robot.text(-length-10,0,f"Back\n{length:.1f} cm", color='green', ha='right')
-
-        if np.isfinite(dists['Left']) and dists['Left'] > 0:
-            length = min(dists['Left'], MAX_DISTANCE_CM)
-            self.ax_robot.plot([0,0],[0,length], color='orange', lw=6)
-            self.ax_robot.text(0,length+2,f"Left\n{length:.1f} cm", color='orange', ha='center')
+        for direction, color, dx, dy in [
+            ('Front','red',1,0),
+            ('Right','blue',0,-1),
+            ('Back','green',-1,0),
+            ('Left','orange',0,1)
+        ]:
+            if np.isfinite(dists[direction]) and dists[direction] > 0:
+                length = min(dists[direction], MAX_DISTANCE_CM)
+                if dx != 0:
+                    self.ax_robot.plot([0, dx*length],[0,0], color=color, lw=BAR_WIDTH)
+                    self.ax_robot.text(dx*length + (2 if dx>0 else -2),0,f"{direction}\n{length:.1f} cm",
+                                       color=color, ha='center' if dx==0 else ('left' if dx>0 else 'right'), va='center')
+                if dy != 0:
+                    self.ax_robot.plot([0,0],[0, dy*length], color=color, lw=BAR_WIDTH)
+                    self.ax_robot.text(0, dy*length + (2 if dy>0 else -2),f"{direction}\n{length:.1f} cm",
+                                       color=color, ha='center', va='bottom' if dy>0 else 'top')
 
     def update_polar_plot(self, scan):
         self.ax_polar.clear()
