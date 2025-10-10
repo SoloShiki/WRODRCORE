@@ -12,6 +12,7 @@ LIDAR_TOPIC = '/scan_raw'
 DIRECTION_WINDOW_DEG = 15
 UPDATE_INTERVAL = 1.0  # seconds between display updates
 MAX_DISTANCE_CM = 100  # maximum detectable distance (1 m = 100 cm)
+Y_AXIS_MAX_CM = 105    # y-axis maximum for display
 
 def wrap_to_pi(angle):
     return (angle + math.pi) % (2 * math.pi) - math.pi
@@ -34,7 +35,7 @@ class LidarTester(Node):
         self.bar_labels = ['N', 'E', 'S', 'W']
         self.bar_vals = [0, 0, 0, 0]
         self.bars = self.ax_bars.bar(self.bar_labels, self.bar_vals)
-        self.ax_bars.set_ylim(0, MAX_DISTANCE_CM)
+        self.ax_bars.set_ylim(0, Y_AXIS_MAX_CM)
         self.ax_bars.set_ylabel("Distance (cm)")
         self.ax_bars.set_title("Cardinal Obstacle Distances")
 
@@ -50,10 +51,17 @@ class LidarTester(Node):
         if scan is None:
             return {'N': np.inf, 'S': np.inf, 'E': np.inf, 'W': np.inf}
 
-        directions = {'E': 0.0, 'N': math.pi/2, 'W': math.pi, 'S': -math.pi/2}
+        # Rotate coordinates to match your actual robot orientation
+        directions = {
+            'N': math.pi / 2,   # originally East → now North
+            'E': 0.0,            # originally North → now East
+            'S': -math.pi / 2,   # originally West → now South
+            'W': math.pi         # originally South → now West
+        }
+
         angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
         ranges = np.array(scan.ranges, dtype=float) * 100  # convert to cm
-        ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)        # limit max distance
+        ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)        # cap distances at 100 cm
 
         results = {}
         half_window = math.radians(window_deg)
@@ -75,7 +83,7 @@ class LidarTester(Node):
         if scan is not None:
             angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
             ranges = np.array(scan.ranges) * 100  # convert to cm
-            ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)  # limit max
+            ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)  # cap at 100 cm
             self.ax_polar.scatter(angles, ranges, s=5, c='b', alpha=0.5)
             self.ax_polar.set_title("LIDAR Scan (Polar View)")
             self.ax_polar.set_theta_zero_location('E')
@@ -88,9 +96,9 @@ class LidarTester(Node):
         self.ax_bars.clear()
         labels = ['N', 'E', 'S', 'W']
         vals = [dists.get(l, np.inf) for l in labels]
-        display_vals = [v if np.isfinite(v) else MAX_DISTANCE_CM for v in vals]
+        display_vals = [v if np.isfinite(v) else MAX_DISTANCE_CM for v in vals]  # bars capped at 100 cm
         bars = self.ax_bars.bar(labels, display_vals, color='skyblue')
-        self.ax_bars.set_ylim(0, MAX_DISTANCE_CM)
+        self.ax_bars.set_ylim(0, Y_AXIS_MAX_CM)  # extend axis to 105 cm
         self.ax_bars.set_ylabel('Distance (cm)')
         self.ax_bars.set_title('Cardinal Obstacle Distances')
 
