@@ -65,8 +65,6 @@ class LidarTester(Node):
 
     def update_robot_plot(self, dists):
         self.ax_robot.clear()
-        self.ax_robot.set_xlim(-AXIS_LIMIT_CM, AXIS_LIMIT_CM)
-        self.ax_robot.set_ylim(-AXIS_LIMIT_CM, AXIS_LIMIT_CM)
         self.ax_robot.set_aspect('equal')
         self.ax_robot.set_title("Robot Top-Down View")
 
@@ -98,12 +96,20 @@ class LidarTester(Node):
                 length = min(dists[direction], MAX_BAR_LENGTH_CM)
                 if dx != 0:
                     self.ax_robot.plot([0, dx*length],[0,0], color=color, lw=BAR_WIDTH)
-                    self.ax_robot.text(dx*length + (2 if dx>0 else -2),0,f"{direction}\n{length:.1f} cm",
-                                       color=color, ha='center' if dx==0 else ('left' if dx>0 else 'right'), va='center')
+                    self.ax_robot.text(dx*length + (2 if dx>0 else -2),0,
+                                       f"{direction}\n{length:.1f} cm",
+                                       color=color,
+                                       ha='left' if dx>0 else 'right', va='center')
                 if dy != 0:
                     self.ax_robot.plot([0,0],[0, dy*length], color=color, lw=BAR_WIDTH)
-                    self.ax_robot.text(0, dy*length + (2 if dy>0 else -2),f"{direction}\n{length:.1f} cm",
-                                       color=color, ha='center', va='bottom' if dy>0 else 'top')
+                    self.ax_robot.text(0, dy*length + (2 if dy>0 else -2),
+                                       f"{direction}\n{length:.1f} cm",
+                                       color=color, ha='center',
+                                       va='bottom' if dy>0 else 'top')
+
+        # Force axes limits **after plotting**
+        self.ax_robot.set_xlim(-AXIS_LIMIT_CM, AXIS_LIMIT_CM)
+        self.ax_robot.set_ylim(-AXIS_LIMIT_CM, AXIS_LIMIT_CM)
 
     def update_polar_plot(self, scan):
         self.ax_polar.clear()
