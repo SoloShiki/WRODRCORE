@@ -3,19 +3,20 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 import numpy as np
-import math
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import time
 
 # ---------------- CONFIG ----------------
 LIDAR_TOPIC = '/scan_raw'
-UPDATE_INTERVAL = 0.2
-MAX_DISTANCE_CM = 100
-Y_AXIS_MAX_CM = 105
-ROBOT_SIZE_CM = 10
+UPDATE_INTERVAL = 0.2       # 5 Hz update
+MAX_DISTANCE_CM = 100       # max bar length
+AXIS_LIMIT_CM = 105         # x and y axis limits
+ROBOT_WIDTH_CM = 12
+ROBOT_LENGTH_CM = 18
 
 def wrap_to_pi(angle):
-    return (angle + math.pi) % (2 * math.pi) - math.pi
+    return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
 class LidarTester(Node):
@@ -25,11 +26,11 @@ class LidarTester(Node):
         self.latest_scan = None
         self.last_update = time.time()
 
-        # --- Setup figure with polar + robot-centric plot ---
+        # --- Setup figure with robot-centric + polar plot ---
         plt.ion()
-        self.fig = plt.figure(figsize=(10, 5))
-        self.ax_robot = self.fig.add_subplot(1, 2, 1)
-        self.ax_polar = self.fig.add_subplot(1, 2, 2, polar=True)
+        self.fig = plt.figure(figsize=(10,5))
+        self.ax_robot = self.fig.add_subplot(1,2,1)
+        self.ax_polar = self.fig.add_subplot(1,2,2, polar=True)
 
         self.timer = self.create_timer(0.05, self.timer_callback)
 
@@ -41,8 +42,8 @@ class LidarTester(Node):
             return {'Front': 0, 'Right': 0, 'Back': 0, 'Left': 0}
 
         directions = {
-            'Front': 0.0,        # East
-            'Right': -np.pi/2,   # South
+            'Front': 0.0,       # East
+            'Right': -np.pi/2,  # South
             'Back': np.pi,       # West
             'Left': np.pi/2      # North
         }
@@ -62,42 +63,54 @@ class LidarTester(Node):
 
     def update_robot_plot(self, dists):
         self.ax_robot.clear()
-        self.ax_robot.set_xlim(-Y_AXIS_MAX_CM, Y_AXIS_MAX_CM)
-        self.ax_robot.set_ylim(-Y_AXIS_MAX_CM, Y_AXIS_MAX_CM)
+        self.ax_robot.set_xlim(-AXIS_LIMIT_CM, AXIS_LIMIT_CM)
+        self.ax_robot.set_ylim(-AXIS_LIMIT_CM, AXIS_LIMIT_CM)
         self.ax_robot.set_aspect('equal')
         self.ax_robot.set_title("Robot Top-Down View")
 
-        # Draw robot square
-        half = ROBOT_SIZE_CM / 2
-        self.ax_robot.add_patch(plt.Rectangle((-half, -half), ROBOT_SIZE_CM, ROBOT_SIZE_CM, facecolor='gray'))
+        # Draw robot as rounded rectangle
+        robot_patch = patches.FancyBboxPatch(
+            (-ROBOT_LENGTH_CM/2, -ROBOT_WIDTH_CM/2),
+            ROBOT_LENGTH_CM, ROBOT_WIDTH_CM,
+            boxstyle="Round,pad=1,rounding_size=4",
+            facecolor='gray'
+        )
+        self.ax_robot.add_patch(robot_patch)
 
-        # Draw lines only if distance > 0
+        # Draw bars (lines) if finite and >0
         if np.isfinite(dists['Front']) and dists['Front'] > 0:
-            self.ax_robot.plot([0, dists['Front']], [0, 0], color='red', lw=4)
-            self.ax_robot.text(dists['Front']+2, 0, f"Front\n{dists['Front']:.1f} cm", color='red')
+            length = min(dists['Front'], MAX_DISTANCE_CM)
+            self.ax_robot.plot([0, length], [0,0], color='red', lw=6)
+            self.ax_robot.text(length+2,0,f"Front\n{length:.1f} cm", color='red')
+
         if np.isfinite(dists['Right']) and dists['Right'] > 0:
-            self.ax_robot.plot([0, 0], [0, -dists['Right']], color='blue', lw=4)
-            self.ax_robot.text(0, -dists['Right']-5, f"Right\n{dists['Right']:.1f} cm", color='blue', ha='center')
+            length = min(dists['Right'], MAX_DISTANCE_CM)
+            self.ax_robot.plot([0,0],[0,-length], color='blue', lw=6)
+            self.ax_robot.text(0,-length-5,f"Right\n{length:.1f} cm", color='blue', ha='center')
+
         if np.isfinite(dists['Back']) and dists['Back'] > 0:
-            self.ax_robot.plot([0, -dists['Back']], [0, 0], color='green', lw=4)
-            self.ax_robot.text(-dists['Back']-10, 0, f"Back\n{dists['Back']:.1f} cm", color='green', ha='right')
+            length = min(dists['Back'], MAX_DISTANCE_CM)
+            self.ax_robot.plot([0,-length],[0,0], color='green', lw=6)
+            self.ax_robot.text(-length-10,0,f"Back\n{length:.1f} cm", color='green', ha='right')
+
         if np.isfinite(dists['Left']) and dists['Left'] > 0:
-            self.ax_robot.plot([0, 0], [0, dists['Left']], color='orange', lw=4)
-            self.ax_robot.text(0, dists['Left']+2, f"Left\n{dists['Left']:.1f} cm", color='orange', ha='center')
+            length = min(dists['Left'], MAX_DISTANCE_CM)
+            self.ax_robot.plot([0,0],[0,length], color='orange', lw=6)
+            self.ax_robot.text(0,length+2,f"Left\n{length:.1f} cm", color='orange', ha='center')
 
     def update_polar_plot(self, scan):
         self.ax_polar.clear()
         if scan is not None:
             angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
-            ranges = np.array(scan.ranges) * 100
-            ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)
-            self.ax_polar.scatter(angles, ranges, s=5, c='b', alpha=0.5)
+            ranges = np.array(scan.ranges)*100
+            ranges = np.clip(ranges,0,MAX_DISTANCE_CM)
+            self.ax_polar.scatter(angles,ranges,s=5,c='b',alpha=0.5)
             self.ax_polar.set_theta_zero_location('E')
             self.ax_polar.set_theta_direction(-1)
             self.ax_polar.set_rmax(MAX_DISTANCE_CM)
             self.ax_polar.set_title("LIDAR Scan (Polar View)")
         else:
-            self.ax_polar.text(0.5, 0.5, "Waiting for scan...", ha='center', va='center')
+            self.ax_polar.text(0.5,0.5,"Waiting for scan...",ha='center',va='center')
 
     def timer_callback(self):
         now = time.time()
