@@ -9,7 +9,7 @@ import time
 
 # ---------------- CONFIG ----------------
 LIDAR_TOPIC = '/scan_raw'
-UPDATE_INTERVAL = 1.0
+UPDATE_INTERVAL = 0.2
 MAX_DISTANCE_CM = 100
 Y_AXIS_MAX_CM = 105
 ROBOT_SIZE_CM = 10
