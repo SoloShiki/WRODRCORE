@@ -51,13 +51,12 @@ class LidarTester(Node):
             return {'N': np.inf, 'S': np.inf, 'E': np.inf, 'W': np.inf}
 
         # ---- Remap directions ----
-        # Original: E=0, N=pi/2, W=pi, S=-pi/2
-        # Remap requested: E→N, W→S, N→E, S→W
+        # Keep N and S, swap E and W
         directions = {
-            'N': 0.0,          # originally East
-            'E': math.pi / 2,  # originally North
-            'S': math.pi,      # originally West
-            'W': -math.pi / 2  # originally South
+            'N': math.pi / 2,    # North
+            'S': -math.pi / 2,   # South
+            'E': math.pi,        # swap with original West
+            'W': 0.0             # swap with original East
         }
 
         angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
