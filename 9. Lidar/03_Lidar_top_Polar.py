@@ -10,8 +10,8 @@ import time
 # ---------------- CONFIG ----------------
 LIDAR_TOPIC = '/scan_raw'
 UPDATE_INTERVAL = 0.2       # 5 Hz update
-MAX_DISTANCE_CM = 100       # max bar length
-AXIS_LIMIT_CM = 105         # x and y axis limits
+MAX_BAR_LENGTH_CM = 100     # max bar length
+AXIS_LIMIT_CM = 110         # x and y axis limits
 ROBOT_WIDTH_CM = 12
 ROBOT_LENGTH_CM = 18
 BAR_WIDTH = 8               # thicker bars
@@ -46,13 +46,13 @@ class LidarTester(Node):
         directions = {
             'Front': 0.0,       # East
             'Right': -np.pi/2,  # South
-            'Back': np.pi,       # West
-            'Left': np.pi/2      # North
+            'Back': np.pi,      # West
+            'Left': np.pi/2     # North
         }
 
         angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
         ranges = np.array(scan.ranges, dtype=float) * 100
-        ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)
+        ranges = np.clip(ranges, 0, MAX_BAR_LENGTH_CM)
 
         results = {}
         window_rad = np.deg2rad(15)
@@ -87,7 +87,7 @@ class LidarTester(Node):
         )
         self.ax_robot.add_patch(cam_patch)
 
-        # Draw bars (lines) if finite and >0
+        # Draw bars (lines) if finite and >0, capped at MAX_BAR_LENGTH_CM
         for direction, color, dx, dy in [
             ('Front','red',1,0),
             ('Right','blue',0,-1),
@@ -95,7 +95,7 @@ class LidarTester(Node):
             ('Left','orange',0,1)
         ]:
             if np.isfinite(dists[direction]) and dists[direction] > 0:
-                length = min(dists[direction], MAX_DISTANCE_CM)
+                length = min(dists[direction], MAX_BAR_LENGTH_CM)
                 if dx != 0:
                     self.ax_robot.plot([0, dx*length],[0,0], color=color, lw=BAR_WIDTH)
                     self.ax_robot.text(dx*length + (2 if dx>0 else -2),0,f"{direction}\n{length:.1f} cm",
@@ -110,11 +110,11 @@ class LidarTester(Node):
         if scan is not None:
             angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
             ranges = np.array(scan.ranges)*100
-            ranges = np.clip(ranges,0,MAX_DISTANCE_CM)
+            ranges = np.clip(ranges,0,MAX_BAR_LENGTH_CM)
             self.ax_polar.scatter(angles,ranges,s=5,c='b',alpha=0.5)
             self.ax_polar.set_theta_zero_location('E')
             self.ax_polar.set_theta_direction(-1)
-            self.ax_polar.set_rmax(MAX_DISTANCE_CM)
+            self.ax_polar.set_rmax(MAX_BAR_LENGTH_CM)
             self.ax_polar.set_title("LIDAR Scan (Polar View)")
         else:
             self.ax_polar.text(0.5,0.5,"Waiting for scan...",ha='center',va='center')
