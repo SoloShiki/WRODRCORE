@@ -32,12 +32,12 @@ class LidarTester(Node):
         self.ax_bars = self.fig.add_subplot(1, 2, 2)
 
         # Pre-create bar chart placeholders
-        self.bar_labels = ['N', 'E', 'S', 'W']
+        self.bar_labels = ['Left', 'Front', 'Right', 'Back']  # relabeled
         self.bar_vals = [0, 0, 0, 0]
         self.bars = self.ax_bars.bar(self.bar_labels, self.bar_vals)
         self.ax_bars.set_ylim(0, Y_AXIS_MAX_CM)
         self.ax_bars.set_ylabel("Distance (cm)")
-        self.ax_bars.set_title("Cardinal Obstacle Distances")
+        self.ax_bars.set_title("Obstacle Distances")
 
         plt.tight_layout()
         plt.show(block=False)
@@ -48,15 +48,14 @@ class LidarTester(Node):
 
     def compute_directional_ranges(self, scan, window_deg=DIRECTION_WINDOW_DEG):
         if scan is None:
-            return {'N': np.inf, 'S': np.inf, 'E': np.inf, 'W': np.inf}
+            return {'Front': np.inf, 'Right': np.inf, 'Back': np.inf, 'Left': np.inf}
 
-        # ---- Remap directions ----
-        # Keep N and S, swap E and W
+        # Keep original LIDAR directions: E=0, N=pi/2, W=pi, S=-pi/2
         directions = {
-            'N': math.pi / 2,    # North
-            'S': -math.pi / 2,   # South
-            'E': math.pi,        # swap with original West
-            'W': 0.0             # swap with original East
+            'Front': 0.0,       # East
+            'Right': -math.pi/2, # South
+            'Back': math.pi,    # West
+            'Left': math.pi/2   # North
         }
 
         angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
@@ -91,13 +90,13 @@ class LidarTester(Node):
 
         # ---- BAR CHART ----
         self.ax_bars.clear()
-        labels = ['N', 'E', 'S', 'W']
+        labels = ['Left', 'Front', 'Right', 'Back']
         vals = [dists.get(l, np.inf) for l in labels]
         display_vals = [v if np.isfinite(v) else MAX_DISTANCE_CM for v in vals]  # bars capped at 100 cm
         bars = self.ax_bars.bar(labels, display_vals, color='skyblue')
-        self.ax_bars.set_ylim(0, Y_AXIS_MAX_CM)  # leave space above
+        self.ax_bars.set_ylim(0, Y_AXIS_MAX_CM)
         self.ax_bars.set_ylabel('Distance (cm)')
-        self.ax_bars.set_title('Cardinal Obstacle Distances')
+        self.ax_bars.set_title('Obstacle Distances')
 
         for rect, v in zip(bars, vals):
             h = rect.get_height()
@@ -112,8 +111,7 @@ class LidarTester(Node):
         now = time.time()
         if self.latest_scan is not None and (now - self.last_update) >= UPDATE_INTERVAL:
             dists = self.compute_directional_ranges(self.latest_scan)
-            dists_cm = {k: (v if np.isfinite(v) else float('inf')) for k, v in dists.items()}
-            self.get_logger().info(f"LIDAR distances (cm): {dists_cm}")
+            self.get_logger().info(f"LIDAR distances (cm): {dists}")
             self.update_plot(self.latest_scan, dists)
             self.last_update = now
 
