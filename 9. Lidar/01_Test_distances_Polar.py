@@ -10,9 +10,9 @@ import time
 # ---------------- CONFIG ----------------
 LIDAR_TOPIC = '/scan_raw'
 DIRECTION_WINDOW_DEG = 15
-UPDATE_INTERVAL = 1.0  # seconds between display updates
-MAX_DISTANCE_CM = 100  # maximum detectable distance (1 m = 100 cm)
-Y_AXIS_MAX_CM = 105    # y-axis maximum for display
+UPDATE_INTERVAL = 1.0      # seconds between display updates
+MAX_DISTANCE_CM = 100      # max detectable distance (1 m = 100 cm)
+Y_AXIS_MAX_CM = 105        # y-axis max for display (space above bars)
 
 def wrap_to_pi(angle):
     return (angle + math.pi) % (2 * math.pi) - math.pi
@@ -25,7 +25,7 @@ class LidarTester(Node):
         self.latest_scan = None
         self.last_update = time.time()
 
-        # --- Setup figure with 2 subplots: polar + bar chart ---
+        # --- Setup figure with polar + bar chart ---
         plt.ion()
         self.fig = plt.figure(figsize=(10, 5))
         self.ax_polar = self.fig.add_subplot(1, 2, 1, polar=True)
@@ -41,7 +41,6 @@ class LidarTester(Node):
 
         plt.tight_layout()
         plt.show(block=False)
-
         self.timer = self.create_timer(0.05, self.timer_callback)
 
     def scan_callback(self, msg):
@@ -51,17 +50,19 @@ class LidarTester(Node):
         if scan is None:
             return {'N': np.inf, 'S': np.inf, 'E': np.inf, 'W': np.inf}
 
-        # Rotate coordinates to match your actual robot orientation
+        # ---- Remap directions ----
+        # Original: E=0, N=pi/2, W=pi, S=-pi/2
+        # Remap requested: E→N, W→S, N→E, S→W
         directions = {
-            'N': math.pi / 2,   # originally East → now North
-            'E': 0.0,            # originally North → now East
-            'S': -math.pi / 2,   # originally West → now South
-            'W': math.pi         # originally South → now West
+            'N': 0.0,          # originally East
+            'E': math.pi / 2,  # originally North
+            'S': math.pi,      # originally West
+            'W': -math.pi / 2  # originally South
         }
 
         angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
-        ranges = np.array(scan.ranges, dtype=float) * 100  # convert to cm
-        ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)        # cap distances at 100 cm
+        ranges = np.array(scan.ranges, dtype=float) * 100       # convert to cm
+        ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)           # cap at 100 cm
 
         results = {}
         half_window = math.radians(window_deg)
@@ -71,10 +72,7 @@ class LidarTester(Node):
             mask = np.abs(angle_diff) <= half_window
             valid_ranges = ranges[mask]
             valid_ranges = valid_ranges[np.isfinite(valid_ranges)]
-            if len(valid_ranges) > 0:
-                results[label] = float(np.min(valid_ranges))
-            else:
-                results[label] = np.inf
+            results[label] = float(np.min(valid_ranges)) if len(valid_ranges) > 0 else np.inf
         return results
 
     def update_plot(self, scan, dists):
@@ -82,8 +80,8 @@ class LidarTester(Node):
         self.ax_polar.clear()
         if scan is not None:
             angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
-            ranges = np.array(scan.ranges) * 100  # convert to cm
-            ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)  # cap at 100 cm
+            ranges = np.array(scan.ranges) * 100
+            ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)
             self.ax_polar.scatter(angles, ranges, s=5, c='b', alpha=0.5)
             self.ax_polar.set_title("LIDAR Scan (Polar View)")
             self.ax_polar.set_theta_zero_location('E')
@@ -98,7 +96,7 @@ class LidarTester(Node):
         vals = [dists.get(l, np.inf) for l in labels]
         display_vals = [v if np.isfinite(v) else MAX_DISTANCE_CM for v in vals]  # bars capped at 100 cm
         bars = self.ax_bars.bar(labels, display_vals, color='skyblue')
-        self.ax_bars.set_ylim(0, Y_AXIS_MAX_CM)  # extend axis to 105 cm
+        self.ax_bars.set_ylim(0, Y_AXIS_MAX_CM)  # leave space above
         self.ax_bars.set_ylabel('Distance (cm)')
         self.ax_bars.set_title('Cardinal Obstacle Distances')
 
