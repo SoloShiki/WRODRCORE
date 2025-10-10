@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import time
 
 # Configuration
-LIDAR_TOPIC = '/scan'
+LIDAR_TOPIC = '/scan_raw'
 DIRECTION_WINDOW_DEG = 15   # angular window around each direction
 UPDATE_INTERVAL = 1.0       # seconds between updates
 

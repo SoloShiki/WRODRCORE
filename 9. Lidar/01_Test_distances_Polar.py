@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import time
 
 # ---------------- CONFIG ----------------
-LIDAR_TOPIC = '/scan'
+LIDAR_TOPIC = '/scan_raw'
 DIRECTION_WINDOW_DEG = 15
 UPDATE_INTERVAL = 1.0  # seconds between display updates
 
