@@ -11,6 +11,7 @@ import time
 LIDAR_TOPIC = '/scan_raw'
 DIRECTION_WINDOW_DEG = 15
 UPDATE_INTERVAL = 1.0  # seconds between display updates
+MAX_DISTANCE_CM = 100  # maximum detectable distance (1 m = 100 cm)
 
 def wrap_to_pi(angle):
     return (angle + math.pi) % (2 * math.pi) - math.pi
@@ -33,8 +34,8 @@ class LidarTester(Node):
         self.bar_labels = ['N', 'E', 'S', 'W']
         self.bar_vals = [0, 0, 0, 0]
         self.bars = self.ax_bars.bar(self.bar_labels, self.bar_vals)
-        self.ax_bars.set_ylim(0, 5)
-        self.ax_bars.set_ylabel("Distance (m)")
+        self.ax_bars.set_ylim(0, MAX_DISTANCE_CM)
+        self.ax_bars.set_ylabel("Distance (cm)")
         self.ax_bars.set_title("Cardinal Obstacle Distances")
 
         plt.tight_layout()
@@ -51,7 +52,8 @@ class LidarTester(Node):
 
         directions = {'E': 0.0, 'N': math.pi/2, 'W': math.pi, 'S': -math.pi/2}
         angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
-        ranges = np.array(scan.ranges, dtype=float)
+        ranges = np.array(scan.ranges, dtype=float) * 100  # convert to cm
+        ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)        # limit max distance
 
         results = {}
         half_window = math.radians(window_deg)
@@ -72,13 +74,13 @@ class LidarTester(Node):
         self.ax_polar.clear()
         if scan is not None:
             angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
-            ranges = np.array(scan.ranges)
-            ranges = np.clip(ranges, 0, scan.range_max)  # clip invalid
+            ranges = np.array(scan.ranges) * 100  # convert to cm
+            ranges = np.clip(ranges, 0, MAX_DISTANCE_CM)  # limit max
             self.ax_polar.scatter(angles, ranges, s=5, c='b', alpha=0.5)
             self.ax_polar.set_title("LIDAR Scan (Polar View)")
-            self.ax_polar.set_theta_zero_location('E')  # 0° at East (forward)
-            self.ax_polar.set_theta_direction(-1)       # clockwise angles
-            self.ax_polar.set_rmax(scan.range_max)
+            self.ax_polar.set_theta_zero_location('E')
+            self.ax_polar.set_theta_direction(-1)
+            self.ax_polar.set_rmax(MAX_DISTANCE_CM)
         else:
             self.ax_polar.text(0.5, 0.5, "Waiting for scan...", ha='center', va='center')
 
@@ -86,16 +88,16 @@ class LidarTester(Node):
         self.ax_bars.clear()
         labels = ['N', 'E', 'S', 'W']
         vals = [dists.get(l, np.inf) for l in labels]
-        display_vals = [v if np.isfinite(v) else 5.0 for v in vals]
+        display_vals = [v if np.isfinite(v) else MAX_DISTANCE_CM for v in vals]
         bars = self.ax_bars.bar(labels, display_vals, color='skyblue')
-        self.ax_bars.set_ylim(0, 5)
-        self.ax_bars.set_ylabel('Distance (m)')
+        self.ax_bars.set_ylim(0, MAX_DISTANCE_CM)
+        self.ax_bars.set_ylabel('Distance (cm)')
         self.ax_bars.set_title('Cardinal Obstacle Distances')
 
         for rect, v in zip(bars, vals):
             h = rect.get_height()
-            label = f"{v:.2f} m" if np.isfinite(v) else "no hit"
-            self.ax_bars.text(rect.get_x() + rect.get_width()/2.0, h + 0.05, label, ha='center', va='bottom')
+            label = f"{v:.1f} cm" if np.isfinite(v) else "no hit"
+            self.ax_bars.text(rect.get_x() + rect.get_width()/2.0, h + 1, label, ha='center', va='bottom')
 
         plt.tight_layout()
         plt.draw()
@@ -105,7 +107,8 @@ class LidarTester(Node):
         now = time.time()
         if self.latest_scan is not None and (now - self.last_update) >= UPDATE_INTERVAL:
             dists = self.compute_directional_ranges(self.latest_scan)
-            self.get_logger().info(f"LIDAR distances: {dists}")
+            dists_cm = {k: (v if np.isfinite(v) else float('inf')) for k, v in dists.items()}
+            self.get_logger().info(f"LIDAR distances (cm): {dists_cm}")
             self.update_plot(self.latest_scan, dists)
             self.last_update = now
 
