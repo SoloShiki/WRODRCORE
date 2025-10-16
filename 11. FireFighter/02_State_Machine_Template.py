@@ -1,152 +1,122 @@
-#!/usr/bin/env python3
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import time
+import RPi.GPIO as GPIO
+from hiwonder import RCCLite
 
-# ---------------- CONFIG ----------------
-LIDAR_TOPIC = '/scan_raw'
-UPDATE_INTERVAL = 0.2       # 5 Hz update
-MAX_BAR_LENGTH_CM = 100     # max bar length
-AXIS_LIMIT_CM = 110         # x and y axis limits
-ROBOT_WIDTH_CM = 12
-ROBOT_LENGTH_CM = 18
-BAR_WIDTH = 8               # thicker bars
-CAMERA_SIZE_CM = 3          # front sensor square
+# -----------------------------
+# Configuration
+# -----------------------------
+PUMP_PIN = 23
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(PUMP_PIN, GPIO.OUT)
 
-def wrap_to_pi(angle):
-    return (angle + np.pi) % (2 * np.pi) - np.pi
+servo = RCCLite.Servo(channel=1)
 
-
-class LidarTester(Node):
+# -----------------------------
+# State Machine Class
+# -----------------------------
+class FireFighterRobot:
     def __init__(self):
-        super().__init__('lidar_tester')
-        self.subscription = self.create_subscription(LaserScan, LIDAR_TOPIC, self.scan_callback, 10)
-        self.latest_scan = None
-        self.last_update = time.time()
+        self.state = "IDLE"
+        self.alarm_triggered = False
+        self.fire_detected = False
+        self.fire_location = None
+        print("Robot initialized. Current state: IDLE")
 
-        # --- Setup figure with robot-centric + polar plot ---
-        plt.ion()
-        self.fig = plt.figure(figsize=(10,5))
-        self.ax_robot = self.fig.add_subplot(1,2,1)
-        self.ax_polar = self.fig.add_subplot(1,2,2, polar=True)
+    def run(self):
+        while True:
+            if self.state == "IDLE":
+                self.idle_state()
+            elif self.state == "NAVIGATION":
+                self.navigation_state()
+            elif self.state == "SEARCH":
+                self.search_state()
+            elif self.state == "FIRE_FIGHTING":
+                self.fire_fighting_state()
+            elif self.state == "DONE":
+                self.done_state()
+                break
+            else:
+                print("Unknown state! Stopping.")
+                break
+            time.sleep(0.1)
 
-        self.timer = self.create_timer(0.05, self.timer_callback)
+    # -----------------------------
+    # State Definitions
+    # -----------------------------
 
-    def scan_callback(self, msg):
-        self.latest_scan = msg
+    def idle_state(self):
+        print("[STATE] IDLE: Waiting for alarm...")
+        # Simulate alarm trigger (replace with real sensor or MQTT input)
+        if self.check_alarm():
+            self.state = "NAVIGATION"
 
-    def compute_directional_ranges(self, scan):
-        if scan is None:
-            return {'Front': 0, 'Right': 0, 'Back': 0, 'Left': 0}
+    def navigation_state(self):
+        print("[STATE] NAVIGATION: Moving to fire location...")
+        # Simulate navigation logic (replace with actual motor control / pathfinding)
+        time.sleep(2)
+        print("Arrived at target area.")
+        self.state = "SEARCH"
 
-        directions = {
-            'Front': 0.0,       # East
-            'Right': -np.pi/2,  # South
-            'Back': np.pi,      # West
-            'Left': np.pi/2     # North
-        }
-
-        angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
-        ranges = np.array(scan.ranges, dtype=float) * 100
-        ranges = np.clip(ranges, 0, MAX_BAR_LENGTH_CM)
-
-        results = {}
-        window_rad = np.deg2rad(15)
-        for label, dir_angle in directions.items():
-            mask = np.abs(np.array([wrap_to_pi(a - dir_angle) for a in angles])) <= window_rad
-            valid_ranges = ranges[mask]
-            valid_ranges = valid_ranges[np.isfinite(valid_ranges)]
-            results[label] = float(np.min(valid_ranges)) if len(valid_ranges) > 0 else 0
-        return results
-
-    def update_robot_plot(self, dists):
-        self.ax_robot.clear()
-        self.ax_robot.set_aspect('equal')
-        self.ax_robot.set_title("Robot Top-Down View")
-
-        # Draw robot as rounded rectangle
-        robot_patch = patches.FancyBboxPatch(
-            (-ROBOT_LENGTH_CM/2, -ROBOT_WIDTH_CM/2),
-            ROBOT_LENGTH_CM, ROBOT_WIDTH_CM,
-            boxstyle="Round,pad=1,rounding_size=4",
-            facecolor='gray'
-        )
-        self.ax_robot.add_patch(robot_patch)
-
-        # Draw front camera/sensor as small square
-        cam_patch = patches.Rectangle(
-            (ROBOT_LENGTH_CM/2, -CAMERA_SIZE_CM/2),
-            CAMERA_SIZE_CM, CAMERA_SIZE_CM,
-            facecolor='black'
-        )
-        self.ax_robot.add_patch(cam_patch)
-
-        # Draw bars (lines) if finite and >0, capped at MAX_BAR_LENGTH_CM
-        for direction, color, dx, dy in [
-            ('Front','red',1,0),
-            ('Right','blue',0,-1),
-            ('Back','green',-1,0),
-            ('Left','orange',0,1)
-        ]:
-            if np.isfinite(dists[direction]) and dists[direction] > 0:
-                length = min(dists[direction], MAX_BAR_LENGTH_CM)
-                if dx != 0:
-                    self.ax_robot.plot([0, dx*length],[0,0], color=color, lw=BAR_WIDTH)
-                    self.ax_robot.text(dx*length + (2 if dx>0 else -2),0,
-                                       f"{direction}\n{length:.1f} cm",
-                                       color=color,
-                                       ha='left' if dx>0 else 'right', va='center')
-                if dy != 0:
-                    self.ax_robot.plot([0,0],[0, dy*length], color=color, lw=BAR_WIDTH)
-                    self.ax_robot.text(0, dy*length + (2 if dy>0 else -2),
-                                       f"{direction}\n{length:.1f} cm",
-                                       color=color, ha='center',
-                                       va='bottom' if dy>0 else 'top')
-
-        # Force axes limits **after plotting**
-        self.ax_robot.set_xlim(-AXIS_LIMIT_CM, AXIS_LIMIT_CM)
-        self.ax_robot.set_ylim(-AXIS_LIMIT_CM, AXIS_LIMIT_CM)
-
-    def update_polar_plot(self, scan):
-        self.ax_polar.clear()
-        if scan is not None:
-            angles = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
-            ranges = np.array(scan.ranges)*100
-            ranges = np.clip(ranges,0,MAX_BAR_LENGTH_CM)
-            self.ax_polar.scatter(angles,ranges,s=5,c='b',alpha=0.5)
-            self.ax_polar.set_theta_zero_location('E')
-            self.ax_polar.set_theta_direction(-1)
-            self.ax_polar.set_rmax(MAX_BAR_LENGTH_CM)
-            self.ax_polar.set_title("LIDAR Scan (Polar View)")
+    def search_state(self):
+        print("[STATE] SEARCH: Scanning area for fire...")
+        # Simulate vision detection (replace with camera + flame detection)
+        time.sleep(2)
+        if self.detect_fire():
+            print("Fire detected!")
+            self.state = "FIRE_FIGHTING"
         else:
-            self.ax_polar.text(0.5,0.5,"Waiting for scan...",ha='center',va='center')
+            print("No fire found, returning to IDLE.")
+            self.state = "IDLE"
 
-    def timer_callback(self):
-        now = time.time()
-        if self.latest_scan is not None and (now - self.last_update) >= UPDATE_INTERVAL:
-            dists = self.compute_directional_ranges(self.latest_scan)
-            self.update_robot_plot(dists)
-            self.update_polar_plot(self.latest_scan)
-            plt.draw()
-            plt.pause(0.001)
-            self.last_update = now
+    def fire_fighting_state(self):
+        print("[STATE] FIRE_FIGHTING: Engaging water pump and servo...")
+        self.activate_pump(True)
+        start_time = time.time()
 
+        try:
+            while time.time() - start_time < 10:
+                servo.set_angle(60)
+                time.sleep(0.5)
+                servo.set_angle(120)
+                time.sleep(0.5)
+            print("Fire extinguished (assumed).")
+        finally:
+            self.activate_pump(False)
+            servo.set_angle(90)
+            self.state = "DONE"
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = LidarTester()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    node.destroy_node()
-    rclpy.shutdown()
-    plt.close()
+    def done_state(self):
+        print("[STATE] DONE: Task complete. Returning to base or idle.")
+        self.cleanup()
 
+    # -----------------------------
+    # Helper Methods
+    # -----------------------------
 
-if __name__ == '__main__':
-    main()
+    def check_alarm(self):
+        # TODO: Replace with actual alarm input (GPIO, MQTT, etc.)
+        # Simulated trigger for demo
+        time.sleep(2)
+        print("Alarm triggered!")
+        return True
+
+    def detect_fire(self):
+        # TODO: Replace with vision logic
+        self.fire_detected = True
+        return True
+
+    def activate_pump(self, on):
+        GPIO.output(PUMP_PIN, GPIO.HIGH if on else GPIO.LOW)
+        print("Pump", "ON" if on else "OFF")
+
+    def cleanup(self):
+        GPIO.output(PUMP_PIN, GPIO.LOW)
+        GPIO.cleanup()
+        print("System shutdown complete.")
+
+# -----------------------------
+# Main
+# -----------------------------
+if __name__ == "__main__":
+    robot = FireFighterRobot()
+    robot.run()
