@@ -51,45 +51,60 @@ class CmdVelPublisher(Node):
     def stop(self, duration=0.1):
         self.send_twist(0.0, 0.0, 0.0, duration)
 
-    # ---------------- Smooth Move in grid direction ----------------
-    def move_direction(self, dx, dy, odom_sub, distance=GRID_SIZE, speed=0.25):
+    # ---------------- Smooth Move in grid direction (patched) ----------------
+    def move_direction(self, dx, dy, odom_sub, distance=GRID_SIZE, speed=0.25, min_speed=0.05):
         """
-        Move the robot in the grid direction (dx, dy)
+        Move the robot in the grid direction (dx, dy) with a cosine accel/decel profile.
+        Ensures a small minimum speed to overcome deadband/static friction.
         dx = row change (-1 up, +1 down)
         dy = col change (-1 left, +1 right)
-        Smooth cosine acceleration/deceleration profile.
         """
         start_x, start_y = odom_sub.x_pos, odom_sub.y_pos
         moved = 0.0
-        accel_distance = min(0.2 * distance, 0.05)
+
+        accel_distance = max(1e-3, min(0.2 * distance, 0.05))
         decel_distance = accel_distance
 
+        rate_sleep = 0.05  # control loop period (s)
+
         while rclpy.ok() and moved < distance:
+            # update odom
             rclpy.spin_once(odom_sub)
+
             dx_pos = odom_sub.x_pos - start_x
             dy_pos = odom_sub.y_pos - start_y
             moved = math.hypot(dx_pos, dy_pos)
 
-            # --- Cosine-based smooth speed factor ---
+            # cosine-based smooth speed factor
             if moved < accel_distance:
-                phase = moved / accel_distance
+                phase = moved / accel_distance if accel_distance > 0 else 1.0
                 factor = 0.5 * (1 - math.cos(math.pi * phase))
             elif moved > distance - decel_distance:
-                phase = (distance - moved) / decel_distance
+                phase = (distance - moved) / decel_distance if decel_distance > 0 else 0.0
                 phase = max(min(phase, 1.0), 0.0)
                 factor = 0.5 * (1 - math.cos(math.pi * phase))
             else:
                 factor = 1.0
 
+            # enforce a small non-zero factor so we actually start moving
+            if speed > 0:
+                min_factor = min(1.0, max(0.0, min_speed / speed))
+            else:
+                min_factor = 0.0
+            factor = max(factor, min_factor)
+
             current_speed = speed * factor
 
-            self.send_twist(
-                linear_x=current_speed * dx,
-                linear_y=current_speed * dy,
-                angular_z=0.0,
-                duration=0.05
-            )
+            # build twist and publish directly (non-blocking)
+            twist = Twist()
+            twist.linear.x = current_speed * dx
+            twist.linear.y = current_speed * dy
+            twist.angular.z = 0.0
+            self.publisher_.publish(twist)
 
+            time.sleep(rate_sleep)
+
+        # final stop
         self.stop()
 
 # ---------------- Maze Generation ----------------
