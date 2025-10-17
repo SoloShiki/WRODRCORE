@@ -224,4 +224,190 @@ def a_star_path(maze, start, goal):
     frontier = [(f_score[start], start)]
     parent = {}
 
-    directions =
+    directions = [(-1,0),(1,0),(0,-1),(0,1)] # Up, Down, Left, Right
+
+    while frontier:
+        _, current = heapq.heappop(frontier)
+
+        if current == goal:
+            break
+
+        for d in directions:
+            neighbor = (current[0]+d[0], current[1]+d[1])
+
+            # Check bounds and if it's a traversable cell
+            if (0 <= neighbor[0] < rows and 0 <= neighbor[1] < cols
+                and maze[neighbor] == 0):
+
+                # Tentative cost to neighbor is 1 (unit cost per move)
+                tentative_g_score = g_score[current] + 1
+
+                if tentative_g_score < g_score.get(neighbor, float('inf')):
+                    # This path to neighbor is better. Record it.
+                    parent[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = tentative_g_score + heuristic(neighbor, goal)
+                    heapq.heappush(frontier, (f_score[neighbor], neighbor))
+
+    # Reconstruct path
+    path=[]
+    node=goal
+    while node in parent:
+        path.append(node)
+        node=parent[node]
+    path.append(start)
+    path.reverse()
+
+    if path and path[0] == start and path[-1] == goal:
+        return path
+    else:
+        return [] # Goal unreachable
+
+# ---------------- Live Maze Plot ----------------
+def plot_maze(maze, start, goal, path=None, robot_pos=None):
+    plt.clf()
+    plt.imshow(maze, cmap="gray_r")
+    if path:
+        # Check if path is empty (unreachable)
+        if path:
+            px, py = zip(*path)
+            plt.plot(py, px, "b.-", label="Path")
+    if robot_pos:
+        x, y = robot_pos
+        gx = int(round(x / GRID_SIZE))
+        gy = int(round(y / GRID_SIZE))
+        gx = np.clip(gx, 0, maze.shape[0]-1)
+        gy = np.clip(gy, 0, maze.shape[1]-1)
+        plt.plot(gy, gx, "ro", label="Robot")
+    plt.plot(start[1], start[0], "go", markersize=10, label="Start")
+    plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal")
+    plt.legend()
+    plt.draw()
+    plt.pause(0.001)
+
+# ---------------- Follow Path with Dynamic Re-planning (D* Lite simulation) ----------------
+def follow_path_dynamic(node, path, odom_sub, maze_updater, maze, start, goal):
+    plt.ion()
+    current_path = path
+
+    # --- Initial position for the plot ---
+    rclpy.spin_once(odom_sub)
+    plot_maze(maze, start, goal, current_path, robot_pos=(odom_sub.x_pos, odom_sub.y_pos))
+
+    while rclpy.ok() and current_path:
+
+        # 1. Check current position against planned path
+        rclpy.spin_once(odom_sub)
+
+        # Determine current grid cell (robot's "start" for the next move)
+        rx, ry = odom_sub.x_pos, odom_sub.y_pos
+        current_grid_pos = maze_updater._world_to_grid(rx, ry)
+
+        # If the robot is not where the path expected the next start to be, re-plan from current pos
+        # Note: compare tuples (row, col)
+        if not current_path or current_grid_pos != current_path[0]:
+            print("Re-planning: Off-path or map update forced.")
+            current_path = a_star_path(maze, current_grid_pos, goal)
+            if not current_path:
+                print("Goal unreachable from current position. Stopping.")
+                break
+
+        # 2. Map Update / Obstacle Detection
+        map_changed = maze_updater.update_map(odom_sub)
+
+        if map_changed:
+            print("Map changed due to Lidar detection. Re-planning...")
+            current_path = a_star_path(maze, current_grid_pos, goal)
+            if not current_path:
+                print("Goal now unreachable. Stopping.")
+                break
+
+        # 3. Movement: perform one grid-step along the current path
+        if len(current_path) > 1:
+            cur = current_path[0]
+            nxt = current_path[1]
+            dx = nxt[0]-cur[0]
+            dy = nxt[1]-cur[1]
+
+            # Perform a single grid move (uses patched smooth move_direction)
+            node.move_direction(dx, dy, odom_sub, distance=GRID_SIZE)
+
+            # After moving, the robot's real position will be used in next loop iteration to decide replanning
+
+            # 4. Update plot after movement
+            rclpy.spin_once(odom_sub)
+            plot_maze(maze, start, goal, current_path, robot_pos=(odom_sub.x_pos, odom_sub.y_pos))
+        elif len(current_path) == 1 and current_path[0] == goal:
+            print("Goal reached!")
+            break
+        else:
+            print("Path empty or invalid after re-planning. Stopping.")
+            break
+
+
+# ---------------- Main ----------------
+def main():
+    rclpy.init()
+    node = CmdVelPublisher()
+    odom_reader = OdometryReader()
+    rclpy.spin_once(odom_reader)
+
+    USE_FIXED_MAP = True
+    if USE_FIXED_MAP:
+        # This initial map must be stored and potentially modified later by the Lidar
+        maze = np.array([
+            [0,1,0,0,0,0],
+            [0,1,0,1,1,0],
+            [0,0,0,1,0,0],
+            [0,1,1,1,0,1],
+            [0,0,1,0,0,0],
+            [0,1,1,1,1,0]
+        ])
+        start = (0,0)
+        goal  = (1,5)
+    else:
+        maze, start, goal = generate_maze()
+
+    # Initial path planning
+    initial_path = a_star_path(maze, start, goal)
+    if not initial_path:
+        print("Initial path failed! Goal unreachable in initial map.")
+        return
+
+    # Initialize Lidar reader and map updater (must be a node to receive Lidar data)
+    lidar_map_updater = LidarMapUpdater(maze, GRID_SIZE)
+
+    # Use a multithreaded executor to spin multiple nodes
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(node)
+    executor.add_node(odom_reader)
+    executor.add_node(lidar_map_updater)
+
+    # Schedule the follow loop (some rclpy builds provide create_task; if not, you can
+    # run follow_path_dynamic in a separate thread instead — kept as-is to match your original)
+    try:
+        # If executor has create_task (some ROS2 variants), use it:
+        if hasattr(executor, "create_task"):
+            executor.create_task(follow_path_dynamic, node, initial_path, odom_reader, lidar_map_updater, maze, start, goal)
+            executor.spin()
+        else:
+            # Fallback: run follow_path_dynamic in a background thread while executor spins nodes
+            import threading
+            t = threading.Thread(target=follow_path_dynamic, args=(node, initial_path, odom_reader, lidar_map_updater, maze, start, goal), daemon=True)
+            t.start()
+            executor.spin()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        node.stop()
+        node.destroy_node()
+        odom_reader.destroy_node()
+        lidar_map_updater.destroy_node()
+        rclpy.shutdown()
+        plt.ioff()
+        plt.show()
+
+if __name__ == "__main__":
+    main()
