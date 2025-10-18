@@ -1,15 +1,15 @@
 import time
-import RPi.GPIO as GPIO
-from hiwonder import RCCLite
+#import RPi.GPIO as GPIO
+#from hiwonder import RCCLite
 
 # -----------------------------
 # Configuration
 # -----------------------------
 PUMP_PIN = 23
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(PUMP_PIN, GPIO.OUT)
+#GPIO.setmode(GPIO.BCM)
+#GPIO.setup(PUMP_PIN, GPIO.OUT)
 
-servo = RCCLite.Servo(channel=1)
+#servo = RCCLite.Servo(channel=1)
 
 # -----------------------------
 # State Machine Class
@@ -50,12 +50,28 @@ class FireFighterRobot:
         if self.check_alarm():
             self.state = "NAVIGATION"
 
-    def navigation_state(self):
-        print("[STATE] NAVIGATION: Moving to fire location...")
-        # Simulate navigation logic (replace with actual motor control / pathfinding)
-        time.sleep(2)
-        print("Arrived at target area.")
-        self.state = "SEARCH"
+    def navigation_state(self):        
+        print("[STATE] NAVIGATION: Running Mecanum_Maze_A.py for navigation...")
+ 
+    try:
+        # Run the external navigation program
+        result = subprocess.run(
+            ["python3", "programs/Mecanum_Maze_A.py"],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        print("Navigation program output:")
+        print(result.stdout)
+
+    except subprocess.CalledProcessError as e:
+        print("Error running Mecanum_Maze_A.py:")
+        print(e.stderr)
+        self.state = "IDLE"
+        return
+
+    print("Navigation completed successfully.")
+    self.state = "SEARCH"
 
     def search_state(self):
         print("[STATE] SEARCH: Scanning area for fire...")
@@ -75,14 +91,14 @@ class FireFighterRobot:
 
         try:
             while time.time() - start_time < 10:
-                servo.set_angle(60)
+                #servo.set_angle(60)
                 time.sleep(0.5)
-                servo.set_angle(120)
+                #servo.set_angle(120)
                 time.sleep(0.5)
             print("Fire extinguished (assumed).")
         finally:
             self.activate_pump(False)
-            servo.set_angle(90)
+            #servo.set_angle(90)
             self.state = "DONE"
 
     def done_state(self):
@@ -106,12 +122,12 @@ class FireFighterRobot:
         return True
 
     def activate_pump(self, on):
-        GPIO.output(PUMP_PIN, GPIO.HIGH if on else GPIO.LOW)
+        #GPIO.output(PUMP_PIN, GPIO.HIGH if on else GPIO.LOW)
         print("Pump", "ON" if on else "OFF")
 
     def cleanup(self):
-        GPIO.output(PUMP_PIN, GPIO.LOW)
-        GPIO.cleanup()
+        #GPIO.output(PUMP_PIN, GPIO.LOW)
+        #GPIO.cleanup()
         print("System shutdown complete.")
 
 # -----------------------------
