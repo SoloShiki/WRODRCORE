@@ -50,6 +50,32 @@ class FireFighterRobot:
         if self.check_alarm():
             self.state = "NAVIGATION"
 
+
+   print("[STATE] IDLE: Running mosquito control program...")
+
+    # Start rpi_mosquito.py if not already running
+    if not hasattr(self, 'mosquito_process') or self.mosquito_process is None:
+        try:
+            self.mosquito_process = subprocess.Popen(
+                ["python3", "programs/rpi_mosquito.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            print("rpi_mosquito.py started.")
+        except Exception as e:
+            print(f"Failed to start rpi_mosquito.py: {e}")
+            self.mosquito_process = None
+
+    
+    # Simulate alarm trigger
+    if self.check_alarm():
+        #Aqui tienen que detectar la alarma
+        print("Alarm detected — stopping mosquito program.")
+        self.stop_mosquito_program()
+        self.state = "NAVIGATION"
+        
+
+
     def navigation_state(self):        
         print("[STATE] NAVIGATION: Running Mecanum_Maze_A.py for navigation...")
  
