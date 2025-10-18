@@ -45,17 +45,17 @@ class FireFighterRobot:
     # -----------------------------
 
 
-def idle_state(self):
-    print("[STATE] IDLE: Running mosquito control program...")
+    def idle_state(self):
+        print("[STATE] IDLE: Running mosquito control program...")
 
     # Start rpi_mosquito.py if not already running
-    if not hasattr(self, 'mosquito_process') or self.mosquito_process is None:
-        try:
-            self.mosquito_process = subprocess.Popen(
-                ["python3", "programs/rpi_mosquito.py"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
+        if not hasattr(self, 'mosquito_process') or self.mosquito_process is None:
+            try:
+                self.mosquito_process = subprocess.Popen(
+                    ["python3", "programs/rpi_mosquito.py"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
             print("rpi_mosquito.py started.")
         except Exception as e:
             print(f"Failed to start rpi_mosquito.py: {e}")
@@ -63,11 +63,11 @@ def idle_state(self):
 
 
     # Simulate alarm trigger
-    if self.check_alarm():
-        print("Alarm detected — stopping mosquito program.")
-        #DECTTAR ALARMA AQUI
-        self.stop_mosquito_program()
-        self.state = "NAVIGATION"
+        if self.check_alarm():
+            print("Alarm detected — stopping mosquito program.")
+            #DECTTAR ALARMA AQUI
+            self.stop_mosquito_program()
+            self.state = "NAVIGATION"
         
             
 
