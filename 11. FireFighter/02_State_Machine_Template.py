@@ -44,14 +44,9 @@ class FireFighterRobot:
     # State Definitions
     # -----------------------------
 
-    def idle_state(self):
-        print("[STATE] IDLE: Waiting for alarm...")
-        # Simulate alarm trigger (replace with real sensor or MQTT input)
-        if self.check_alarm():
-            self.state = "NAVIGATION"
 
-
-   print("[STATE] IDLE: Running mosquito control program...")
+def idle_state(self):
+    print("[STATE] IDLE: Running mosquito control program...")
 
     # Start rpi_mosquito.py if not already running
     if not hasattr(self, 'mosquito_process') or self.mosquito_process is None:
@@ -66,14 +61,18 @@ class FireFighterRobot:
             print(f"Failed to start rpi_mosquito.py: {e}")
             self.mosquito_process = None
 
-    
+
     # Simulate alarm trigger
     if self.check_alarm():
-        #Aqui tienen que detectar la alarma
         print("Alarm detected — stopping mosquito program.")
+        #DECTTAR ALARMA AQUI
         self.stop_mosquito_program()
         self.state = "NAVIGATION"
         
+            
+
+
+
 
 
     def navigation_state(self):        
