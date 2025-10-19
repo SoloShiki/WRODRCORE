@@ -47,7 +47,7 @@ class OdometryReader(Node):
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y*q.y + q.z*q.z)
         self.odom_yaw = math.atan2(siny_cosp, cosy_cosp)
-        # complementary filter: trust odometry mostly, correct with IMU
+        # Complementary filter for yaw fusion
         alpha = 0.98
         self.fused_yaw = alpha * self.odom_yaw + (1 - alpha) * self.imu_yaw
 
@@ -72,20 +72,15 @@ class CmdVelPublisher(Node):
         self.send_twist(0.0, 0.0, 0.0, duration)
 
     def move_direction(self, dx, dy, odom_sub, distance=GRID_SIZE, speed=0.2):
+        """Move one grid cell while maintaining heading."""
         start_x, start_y = odom_sub.x_pos, odom_sub.y_pos
         target_yaw = odom_sub.fused_yaw  # hold current heading
         while rclpy.ok() and math.hypot(odom_sub.x_pos - start_x, odom_sub.y_pos - start_y) < distance:
             rclpy.spin_once(odom_sub)
-            # compute yaw error
             err = math.atan2(math.sin(target_yaw - odom_sub.fused_yaw),
                              math.cos(target_yaw - odom_sub.fused_yaw))
-            angular_z = 0.5 * err  # simple correction gain
-            self.send_twist(
-                linear_x=speed * dx,
-                linear_y=speed * dy,
-                angular_z=angular_z,
-                duration=0.05
-            )
+            angular_z = 0.5 * err
+            self.send_twist(speed * dx, speed * dy, angular_z, 0.05)
             time.sleep(0.05)
         self.stop()
 
@@ -102,24 +97,31 @@ class CmdVelPublisher(Node):
             time.sleep(0.05)
         self.stop()
 
-# ---------------- Maze Generation ----------------
-def generate_maze(x_size=None, y_size=None, num_walls=None):
-    if x_size is None:
-        x_size = random.randint(6,12)
-    if y_size is None:
-        y_size = random.randint(6,12)
-    maze = np.zeros((x_size, y_size), dtype=int)
-    if num_walls is None:
-        num_walls = int(x_size * 1.5)
-    wall_indices = random.sample(range(x_size*y_size), num_walls)
-    for idx in wall_indices:
-        row = idx // y_size
-        col = idx % y_size
-        maze[row, col] = 1
-    start = (0,0)
-    goal  = (x_size-1, y_size-1)
-    maze[start] = 0
-    maze[goal] = 0
+# ---------------- Parse Map with R/G ----------------
+def parse_map(layout):
+    """
+    Convert a human-readable map:
+      '0' = free
+      '1' = wall
+      'R' = start (robot)
+      'G' = goal
+    """
+    maze = np.zeros((len(layout), len(layout[0])), dtype=int)
+    start = goal = None
+    for r, row in enumerate(layout):
+        for c, val in enumerate(row):
+            if val == "1":
+                maze[r, c] = 1
+            elif val == "R":
+                start = (r, c)
+                maze[r, c] = 0
+            elif val == "G":
+                goal = (r, c)
+                maze[r, c] = 0
+            else:
+                maze[r, c] = 0
+    if start is None or goal is None:
+        raise ValueError("Map must contain 'R' (start) and 'G' (goal)")
     return maze, start, goal
 
 # ---------------- BFS Path Planning ----------------
@@ -128,19 +130,19 @@ def bfs_path(maze, start, goal):
     parent = {}
     frontier = deque([start])
     visited[start] = 1
-    directions = [(-1,0),(1,0),(0,-1),(0,1)]
+    dirs = [(-1,0),(1,0),(0,-1),(0,1)]
     while frontier:
-        current = frontier.popleft()
-        if current == goal:
+        cur = frontier.popleft()
+        if cur == goal:
             break
-        for d in directions:
-            neighbor = (current[0]+d[0], current[1]+d[1])
-            if (0<=neighbor[0]<maze.shape[0] and 0<=neighbor[1]<maze.shape[1] 
-                and maze[neighbor]==0 and visited[neighbor]==0):
-                frontier.append(neighbor)
-                visited[neighbor]=1
-                parent[neighbor]=current
-    path=[]
+        for d in dirs:
+            n = (cur[0]+d[0], cur[1]+d[1])
+            if (0 <= n[0] < maze.shape[0] and 0 <= n[1] < maze.shape[1]
+                and maze[n] == 0 and visited[n] == 0):
+                frontier.append(n)
+                visited[n] = 1
+                parent[n] = cur
+    path = []
     node = goal
     while node != start:
         path.append(node)
@@ -149,7 +151,7 @@ def bfs_path(maze, start, goal):
     path.reverse()
     return path
 
-# ---------------- Live Maze Plot ----------------
+# ---------------- Plot Maze ----------------
 def plot_maze(maze, start, goal, path=None, robot_pos=None):
     plt.clf()
     plt.imshow(maze, cmap="gray_r")
@@ -163,64 +165,55 @@ def plot_maze(maze, start, goal, path=None, robot_pos=None):
         gx = np.clip(gx, 0, maze.shape[0]-1)
         gy = np.clip(gy, 0, maze.shape[1]-1)
         plt.plot(gy, gx, "ro", label="Robot")
-    plt.plot(start[1], start[0], "go", markersize=10, label="Start")
-    plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal")
+    plt.plot(start[1], start[0], "go", markersize=10, label="Start (R)")
+    plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal (G)")
     plt.legend()
     plt.draw()
     plt.pause(0.001)
 
-# ---------------- Follow Path with Mecanum ----------------
+# ---------------- Follow Path ----------------
 def follow_path(node, path, odom_sub, imu_sub, maze, start, goal):
     plt.ion()
     for i in range(1, len(path)):
-        cur = path[i-1]
-        nxt = path[i]
+        cur, nxt = path[i-1], path[i]
         dx = nxt[0] - cur[0]
         dy = nxt[1] - cur[1]
-        # spin once to update IMU yaw
         rclpy.spin_once(imu_sub)
         odom_sub.imu_yaw = imu_sub.yaw
-        node.move_direction(dx, dy, odom_sub, distance=GRID_SIZE)
+        node.move_direction(dx, dy, odom_sub)
         rclpy.spin_once(odom_sub)
         plot_maze(maze, start, goal, path, robot_pos=(odom_sub.x_pos, odom_sub.y_pos))
 
+# ---------------- Main ----------------
 def main():
     rclpy.init()
     node = CmdVelPublisher()
     odom_reader = OdometryReader()
     imu_reader = IMUReader()
 
-    # initial spin to flush topics
+    # initial topic updates
     rclpy.spin_once(odom_reader)
     rclpy.spin_once(imu_reader)
 
-    # use fixed map or random
-    USE_FIXED_MAP = True
-    if USE_FIXED_MAP:
-        maze = np.array([
-            [0,1,0,0,0,0],
-            [0,1,0,1,1,0],
-            [0,0,0,1,0,0],
-            [0,1,1,1,0,1],
-            [0,0,1,0,0,0],
-            [0,1,1,1,1,0]
-        ])
-        start = (0,0)
-        goal  = (1,5)
-    else:
-        maze, start, goal = generate_maze()
-
+    # Visual map layout
+    maze_layout = [
+        ["R","1","0","0","0","0"],
+        ["0","1","0","1","1","0"],
+        ["0","0","0","1","0","0"],
+        ["0","1","1","1","0","1"],
+        ["0","0","1","0","0","0"],
+        ["0","1","1","1","1","G"]
+    ]
+    maze, start, goal = parse_map(maze_layout)
     path = bfs_path(maze, start, goal)
 
     plt.figure()
     plot_maze(maze, start, goal, path, robot_pos=(odom_reader.x_pos, odom_reader.y_pos))
 
-    # optionally rotate to known start heading:
-    desired_yaw = 0.0  # e.g., face East
-    node.rotate_to_yaw(desired_yaw, odom_reader)
+    # Optional: rotate to initial heading (e.g., face East)
+    node.rotate_to_yaw(0.0, odom_reader)
 
-    follow_path(node, path, odom_sub=odom_reader, imu_sub=imu_reader,
-                maze=maze, start=start, goal=goal)
+    follow_path(node, path, odom_reader, imu_reader, maze, start, goal)
 
     node.stop()
     node.destroy_node()
