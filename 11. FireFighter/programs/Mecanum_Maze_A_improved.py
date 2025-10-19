@@ -224,8 +224,36 @@ def main():
     plot_maze(maze, start, goal, path, robot_pos=(odom_reader.x_pos, odom_reader.y_pos))
 
     # optionally rotate to known start heading
-    desired_yaw = 0.0
-    node.rotate_to_yaw(desired_yaw, odom_reader)
+    #desired_yaw = 0.0
+    #node.rotate_to_yaw(desired_yaw, odom_reader)
+    
+     # --- Choose initial orientation relative to map ---
+    # Map orientation reference:
+    #   "north" = +Y direction (pi/2)
+    #   "south" = -Y direction (-pi/2)
+    #   "east"  = +X direction (0)
+    #   "west"  = -X direction (pi)
+    ORIENTATION_TO_YAW = {
+        "north": math.pi / 2,
+        "south": -math.pi / 2,
+        "east": 0.0,
+        "west": math.pi
+    }
+
+    # --- Set robot initial orientation relative to the map ---
+    desired_orientation = "south"   # <<< change this if needed
+    desired_yaw = ORIENTATION_TO_YAW[desired_orientation.lower()]
+
+    # --- Rotate only if needed ---
+    rclpy.spin_once(odom_reader)
+    current_yaw = odom_reader.fused_yaw
+    yaw_error = math.atan2(math.sin(desired_yaw - current_yaw),
+                           math.cos(desired_yaw - current_yaw))
+    if abs(yaw_error) > 0.1:  # only rotate if significantly misaligned (>~5.7°)
+        node.rotate_to_yaw(desired_yaw, odom_reader)
+    else:
+        print(f"Already facing {desired_orientation.upper()} — no rotation needed.")
+
 
     follow_path(node, path, odom_sub=odom_reader, imu_sub=imu_reader,
                 maze=maze, start=start, goal=goal)
