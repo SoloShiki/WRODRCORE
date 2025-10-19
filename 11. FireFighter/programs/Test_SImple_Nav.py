@@ -2,29 +2,36 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
+from nav2_simple_commander.robot_navigator import BasicNavigator, NavigationResult
 import math
-
-class SimpleGoal(Node):
-    def __init__(self):
-        super().__init__('simple_goal_sender')
-        self.pub = self.create_publisher(PoseStamped, '/goal_pose', 10)
-        self.timer = self.create_timer(2.0, self.send_goal)
-
-    def send_goal(self):
-        goal = PoseStamped()
-        goal.header.frame_id = 'base_link'  # 2 m ahead of robot
-        goal.header.stamp = self.get_clock().now().to_msg()
-        goal.pose.position.x = 2.0
-        goal.pose.orientation.w = 1.0
-        self.pub.publish(goal)
-        self.get_logger().info('Sent goal 2 m forward')
-        self.timer.cancel()
 
 def main():
     rclpy.init()
-    node = SimpleGoal()
-    rclpy.spin(node)
-    node.destroy_node()
+    navigator = BasicNavigator()
+
+    # Wait for Nav2 to fully activate
+    navigator.waitUntilNav2Active()
+
+    # Create a goal pose in the map frame
+    goal = PoseStamped()
+    goal.header.frame_id = 'map'
+    goal.header.stamp = navigator.get_clock().now().to_msg()
+    goal.pose.position.x = 2.0
+    goal.pose.position.y = 0.0
+    goal.pose.orientation.w = 1.0
+
+    navigator.goToPose(goal)
+
+    # Wait for result
+    while not navigator.isTaskComplete():
+        rclpy.spin_once(navigator, timeout_sec=0.1)
+
+    result = navigator.getResult()
+    if result == NavigationResult.SUCCEEDED:
+        print('Reached goal successfully!')
+    else:
+        print('Navigation failed or canceled.')
+
     rclpy.shutdown()
 
 if __name__ == '__main__':
