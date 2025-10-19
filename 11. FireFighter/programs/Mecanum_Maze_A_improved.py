@@ -36,7 +36,10 @@ class OdometryReader(Node):
         self.y_pos = 0.0
         self.odom_yaw = 0.0
         self.imu_yaw = 0.0
-        self.fused_yaw = 0.0
+        # CRITICAL CHANGE: The offset to align the physical robot's
+        # current orientation to a map-defined yaw (e.g., 'south' = -pi/2)
+        self.map_yaw_offset = 0.0 
+        self.fused_yaw = 0.0 # This now represents the map-frame yaw
         self.subscription = self.create_subscription(Odometry, topic, self.odom_callback, 10)
 
     def odom_callback(self, msg):
@@ -46,8 +49,17 @@ class OdometryReader(Node):
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y*q.y + q.z*q.z)
         self.odom_yaw = math.atan2(siny_cosp, cosy_cosp)
+        
         alpha = 0.98
-        self.fused_yaw = alpha * self.odom_yaw + (1 - alpha) * self.imu_yaw
+        
+        # Apply the fusion using raw IMU/Odometry data
+        geographic_yaw = alpha * self.odom_yaw + (1 - alpha) * self.imu_yaw
+        
+        # Apply the map offset to get the yaw in the map frame
+        self.fused_yaw = geographic_yaw + self.map_yaw_offset
+        # Normalize the yaw to [-pi, pi]
+        self.fused_yaw = math.atan2(math.sin(self.fused_yaw), math.cos(self.fused_yaw))
+
 
 # ---------------- Command Velocity Publisher ----------------
 class CmdVelPublisher(Node):
@@ -69,24 +81,54 @@ class CmdVelPublisher(Node):
     def stop(self, duration=0.1):
         self.send_twist(0.0, 0.0, 0.0, duration)
 
+    # --- MODIFIED: Use holonomic motion relative to the map frame ---
     def move_direction(self, dx, dy, odom_sub, distance=GRID_SIZE, speed=0.2):
-        """Move the robot smoothly in a direction for a given distance"""
+        """
+        Move the robot smoothly in a direction (dx, dy) defined by the map axes.
+        The robot strafes/moves in the required direction while maintaining its current map-frame yaw.
+        """
         start_x, start_y = odom_sub.x_pos, odom_sub.y_pos
-        target_yaw = odom_sub.fused_yaw
+        current_yaw = odom_sub.fused_yaw # This is now the yaw in the map frame
+        
+        # Target map-frame linear velocity components:
+        # Assuming map: Rows (dx) are -Y, Columns (dy) are +X
+        map_vel_x = speed * dy    
+        map_vel_y = speed * (-dx) 
+
         while rclpy.ok() and math.hypot(odom_sub.x_pos - start_x, odom_sub.y_pos - start_y) < distance:
             rclpy.spin_once(odom_sub)
-            err = math.atan2(math.sin(target_yaw - odom_sub.fused_yaw),
-                             math.cos(target_yaw - odom_sub.fused_yaw))
+            
+            # Use the FUSED_YAW (which includes the offset) for the transformation
+            fused_yaw = odom_sub.fused_yaw 
+
+            # 1. Yaw Correction (to maintain the current map-frame heading)
+            err = math.atan2(math.sin(current_yaw - fused_yaw),
+                             math.cos(current_yaw - fused_yaw))
             angular_z = 0.5 * err
+            
+            # 2. Body-Frame Velocity Calculation (Inverse Rotation)
+            # Transform map-frame velocity (map_vel_x, map_vel_y) into the body frame
+            
+            cos_yaw = math.cos(fused_yaw)
+            sin_yaw = math.sin(fused_yaw)
+            
+            # x_body = x_map*cos(yaw) + y_map*sin(yaw)
+            linear_x_body = map_vel_x * cos_yaw + map_vel_y * sin_yaw
+            
+            # y_body = -x_map*sin(yaw) + y_map*cos(yaw)
+            linear_y_body = -map_vel_x * sin_yaw + map_vel_y * cos_yaw
+            
             self.send_twist(
-                linear_x=speed * dx,
-                linear_y=speed * dy,
+                linear_x=linear_x_body,
+                linear_y=linear_y_body,
                 angular_z=angular_z,
                 duration=0.05
             )
         self.stop()
+    # --- END MODIFIED move_direction ---
 
     def rotate_to_yaw(self, target_yaw, odom_sub, yaw_tol=0.05, max_speed=0.3):
+        # This function is now **unused** but kept for code completeness.
         while rclpy.ok():
             rclpy.spin_once(odom_sub)
             yaw_err = math.atan2(math.sin(target_yaw - odom_sub.fused_yaw),
@@ -155,8 +197,9 @@ def plot_maze(maze, start, goal, path=None, robot_pos=None):
         plt.plot(py, px, "b.-", label="Path")
     if robot_pos:
         x, y = robot_pos
-        gx = int(round(x / GRID_SIZE))
-        gy = int(round(y / GRID_SIZE))
+        # Note: Coordinate transformation for plot assumes map Y is -Row, map X is +Col
+        gx = int(round(-y / GRID_SIZE))  
+        gy = int(round(x / GRID_SIZE))
         gx = np.clip(gx, 0, maze.shape[0]-1)
         gy = np.clip(gy, 0, maze.shape[1]-1)
         plt.plot(gy, gx, "ro", label="Robot")
@@ -204,8 +247,10 @@ def main():
     imu_reader = IMUReader()
 
     # flush initial readings
-    rclpy.spin_once(odom_reader)
     rclpy.spin_once(imu_reader)
+    odom_reader.imu_yaw = imu_reader.yaw # Set IMU yaw before first odom update
+    rclpy.spin_once(odom_reader)
+
 
     # Map layout with R=start, G=goal, 1=wall, 0=free
     maze_layout = [
@@ -223,16 +268,8 @@ def main():
     plt.figure()
     plot_maze(maze, start, goal, path, robot_pos=(odom_reader.x_pos, odom_reader.y_pos))
 
-    # optionally rotate to known start heading
-    #desired_yaw = 0.0
-    #node.rotate_to_yaw(desired_yaw, odom_reader)
+    # --- Initial Orientation Setup (Align current physical heading to map frame) ---
     
-     # --- Choose initial orientation relative to map ---
-    # Map orientation reference:
-    #   "north" = +Y direction (pi/2)
-    #   "south" = -Y direction (-pi/2)
-    #   "east"  = +X direction (0)
-    #   "west"  = -X direction (pi)
     ORIENTATION_TO_YAW = {
         "north": math.pi / 2,
         "south": -math.pi / 2,
@@ -240,20 +277,28 @@ def main():
         "west": math.pi
     }
 
-    # --- Set robot initial orientation relative to the map ---
-    desired_orientation = "south"   # <<< change this if needed
-    desired_yaw = ORIENTATION_TO_YAW[desired_orientation.lower()]
+    # Set which map direction the robot is currently facing (e.g., 'south' on the map)
+    map_direction_to_align = "south"
+    target_map_yaw = ORIENTATION_TO_YAW[map_direction_to_align.lower()]
 
-    # --- Rotate only if needed ---
-    rclpy.spin_once(odom_reader)
-    current_yaw = odom_reader.fused_yaw
-    yaw_error = math.atan2(math.sin(desired_yaw - current_yaw),
-                           math.cos(desired_yaw - current_yaw))
-    if abs(yaw_error) > 0.1:  # only rotate if significantly misaligned (>~5.7°)
-        node.rotate_to_yaw(desired_yaw, odom_reader)
-    else:
-        print(f"Already facing {desired_orientation.upper()} — no rotation needed.")
-
+    # To get the robot's true geographic/IMU yaw for the offset calculation:
+    # We must temporarily use the raw, non-offset-adjusted yaw calculation.
+    # Note: This is an approximation as it bypasses the alpha blending in odom_callback.
+    geographic_yaw = odom_reader.odom_yaw * 0.98 + odom_reader.imu_yaw * 0.02
+    
+    # Calculate the offset needed to make the current geographic yaw equal the target map yaw.
+    # New Fused Yaw = Geographic Yaw + Offset
+    # Target Map Yaw = Geographic Yaw + Offset
+    # Offset = Target Map Yaw - Geographic Yaw
+    odom_reader.map_yaw_offset = target_map_yaw - geographic_yaw
+    
+    # The 'fused_yaw' in odom_reader will be recalculated on the next update and will 
+    # now be correctly registered in the map frame.
+    
+    print(f"Robot's current physical heading ({geographic_yaw:.2f} rad) is now aliased to map's {map_direction_to_align.upper()} ({target_map_yaw:.2f} rad).")
+    print(f"Using map yaw offset: {odom_reader.map_yaw_offset:.2f} rad.")
+    
+    # No rotation call is needed, as the movement controller uses the newly-offset yaw.
 
     follow_path(node, path, odom_sub=odom_reader, imu_sub=imu_reader,
                 maze=maze, start=start, goal=goal)
