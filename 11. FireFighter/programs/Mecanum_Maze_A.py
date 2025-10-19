@@ -51,25 +51,19 @@ class CmdVelPublisher(Node):
     def stop(self, duration=0.1):
         self.send_twist(0.0, 0.0, 0.0, duration)
 
-    # ---------------- Move in grid direction ----------------
     def move_direction(self, dx, dy, odom_sub, distance=GRID_SIZE, speed=0.2):
-        """
-        Move the robot in the grid direction (dx, dy)
-        dx = row change (-1 up, +1 down)
-        dy = col change (-1 left, +1 right)
-        """
+        """Move the robot one grid cell in direction (dx, dy)"""
         start_x, start_y = odom_sub.x_pos, odom_sub.y_pos
         while rclpy.ok() and math.hypot(odom_sub.x_pos - start_x, odom_sub.y_pos - start_y) < distance:
             self.send_twist(
-                linear_x=speed*dx,
-                linear_y=speed*dy,
+                linear_x=speed * dx,
+                linear_y=speed * dy,
                 angular_z=0.0,
                 duration=0.05
             )
             rclpy.spin_once(odom_sub)
         self.stop()
 
-    # ---------------- Optional rotation to yaw ----------------
     def rotate_to_yaw(self, target_yaw, odom_sub, yaw_tol=0.05, max_speed=0.3):
         while rclpy.ok():
             rclpy.spin_once(odom_sub)
@@ -82,24 +76,32 @@ class CmdVelPublisher(Node):
             time.sleep(0.05)
         self.stop()
 
-# ---------------- Maze Generation ----------------
-def generate_maze(x_size=None, y_size=None, num_walls=None):
-    if x_size is None:
-        x_size = random.randint(6,12)
-    if y_size is None:
-        y_size = random.randint(6,12)
-    maze = np.zeros((x_size, y_size), dtype=int)
-    if num_walls is None:
-        num_walls = int(x_size * 1.5)
-    wall_indices = random.sample(range(x_size*y_size), num_walls)
-    for idx in wall_indices:
-        row = idx // y_size
-        col = idx % y_size
-        maze[row, col] = 1
-    start = (0,0)
-    goal  = (x_size-1, y_size-1)
-    maze[start] = 0
-    maze[goal] = 0
+# ---------------- Parse Map with 'R' and 'G' ----------------
+def parse_map(layout):
+    """
+    Convert a map defined with:
+      '0' = free cell
+      '1' = wall
+      'R' = robot start
+      'G' = goal
+    into a numpy array (maze), and return start/goal coordinates.
+    """
+    maze = np.zeros((len(layout), len(layout[0])), dtype=int)
+    start = goal = None
+    for r, row in enumerate(layout):
+        for c, val in enumerate(row):
+            if val == "1":
+                maze[r, c] = 1
+            elif val == "R":
+                start = (r, c)
+                maze[r, c] = 0
+            elif val == "G":
+                goal = (r, c)
+                maze[r, c] = 0
+            else:
+                maze[r, c] = 0
+    if start is None or goal is None:
+        raise ValueError("Map must contain both 'R' (start) and 'G' (goal)!")
     return maze, start, goal
 
 # ---------------- BFS Path Planning ----------------
@@ -115,16 +117,16 @@ def bfs_path(maze, start, goal):
             break
         for d in directions:
             neighbor = (current[0]+d[0], current[1]+d[1])
-            if (0<=neighbor[0]<maze.shape[0] and 0<=neighbor[1]<maze.shape[1] 
-                and maze[neighbor]==0 and visited[neighbor]==0):
+            if (0 <= neighbor[0] < maze.shape[0] and 0 <= neighbor[1] < maze.shape[1] 
+                and maze[neighbor] == 0 and visited[neighbor] == 0):
                 frontier.append(neighbor)
-                visited[neighbor]=1
-                parent[neighbor]=current
-    path=[]
-    node=goal
-    while node!=start:
+                visited[neighbor] = 1
+                parent[neighbor] = current
+    path = []
+    node = goal
+    while node != start:
         path.append(node)
-        node=parent.get(node,start)
+        node = parent.get(node, start)
     path.append(start)
     path.reverse()
     return path
@@ -143,20 +145,20 @@ def plot_maze(maze, start, goal, path=None, robot_pos=None):
         gx = np.clip(gx, 0, maze.shape[0]-1)
         gy = np.clip(gy, 0, maze.shape[1]-1)
         plt.plot(gy, gx, "ro", label="Robot")
-    plt.plot(start[1], start[0], "go", markersize=10, label="Start")
-    plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal")
+    plt.plot(start[1], start[0], "go", markersize=10, label="Start (R)")
+    plt.plot(goal[1], goal[0], "yx", markersize=10, label="Goal (G)")
     plt.legend()
     plt.draw()
     plt.pause(0.001)
 
-# ---------------- Follow Path with Mecanum ----------------
+# ---------------- Follow Path ----------------
 def follow_path(node, path, odom_sub, maze, start, goal):
     plt.ion()
     for i in range(1, len(path)):
         cur = path[i-1]
         nxt = path[i]
-        dx = nxt[0]-cur[0]
-        dy = nxt[1]-cur[1]
+        dx = nxt[0] - cur[0]
+        dy = nxt[1] - cur[1]
         node.move_direction(dx, dy, odom_sub, distance=GRID_SIZE)
         rclpy.spin_once(odom_sub)
         plot_maze(maze, start, goal, path, robot_pos=(odom_sub.x_pos, odom_sub.y_pos))
@@ -168,26 +170,21 @@ def main():
     odom_reader = OdometryReader()
     rclpy.spin_once(odom_reader)
 
-    USE_FIXED_MAP = True
-    if USE_FIXED_MAP:
-        maze = np.array([
-            [0,1,0,0,0,0],
-            [0,1,0,1,1,0],
-            [0,0,0,1,0,0],
-            [0,1,1,1,0,1],
-            [0,0,1,0,0,0],
-            [0,1,1,1,1,0]
-        ])
-        start = (0,0)
-        goal  = (1,5)
-    else:
-        maze, start, goal = generate_maze()
+    # Define the map visually (R = start, G = goal, 1 = wall, 0 = free)
+    maze_layout = [
+        ["R", "1", "0", "0", "0", "0"],
+        ["0", "1", "0", "1", "1", "0"],
+        ["0", "0", "0", "1", "0", "0"],
+        ["0", "1", "1", "1", "0", "1"],
+        ["0", "0", "1", "0", "0", "0"],
+        ["0", "1", "1", "1", "1", "G"]
+    ]
 
+    maze, start, goal = parse_map(maze_layout)
     path = bfs_path(maze, start, goal)
 
     plt.figure()
     plot_maze(maze, start, goal, path, robot_pos=(odom_reader.x_pos, odom_reader.y_pos))
-
     follow_path(node, path, odom_sub=odom_reader, maze=maze, start=start, goal=goal)
 
     node.stop()
