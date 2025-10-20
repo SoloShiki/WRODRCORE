@@ -10,7 +10,10 @@ class PWMServoController(Node):
         super().__init__('pwm_servo_controller')
         
         #self.declare_parameter('servo_id', 3)   #Servo de direccion en J5?
-        self.declare_parameter('servo_id', 1)
+        #self.declare_parameter('servo_id', 1)   #camara up and Down
+        self.declare_parameter('servo_id', 2)   #camara up and Down
+        
+        
         self.declare_parameter('initial_position', 500)
         self.declare_parameter('offset', 0)
         self.declare_parameter('step_size', 1000)
