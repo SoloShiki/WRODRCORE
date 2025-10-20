@@ -17,7 +17,7 @@ class BusServoControlNode(Node):
         msg = ServosPosition()
         msg.duration = 0.5
         servo_position = ServoPosition()
-        servo_position.id = 2
+        servo_position.id = 5
         servo_position.position = self.position
         msg.position = [servo_position]
 
