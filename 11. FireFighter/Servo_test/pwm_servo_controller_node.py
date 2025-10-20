@@ -1,3 +1,8 @@
+
+        #self.declare_parameter('servo_id', 3)   #Servo de direccion en J5?
+        #self.declare_parameter('servo_id', 1)   #camara up and Down
+        #self.declare_parameter('servo_id', 2)   #camara right and left
+        
 #!/usr/bin/env python3
 # encoding: utf-8
 
@@ -8,11 +13,6 @@ from ros_robot_controller_msgs.msg import SetPWMServoState, PWMServoState
 class PWMServoController(Node):
     def __init__(self):
         super().__init__('pwm_servo_controller')
-        
-        
-        #self.declare_parameter('servo_id', 3)   #Servo de direccion en J5?
-        #self.declare_parameter('servo_id', 1)   #camara up and Down
-        #self.declare_parameter('servo_id', 2)   #camara right and left
         
         self.declare_parameter('servo_id', 3)
         self.declare_parameter('initial_position', 500)
@@ -67,4 +67,6 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+
 
