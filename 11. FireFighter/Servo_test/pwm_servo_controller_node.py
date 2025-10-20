@@ -9,7 +9,7 @@ class PWMServoController(Node):
     def __init__(self):
         super().__init__('pwm_servo_controller')
         
-        self.declare_parameter('servo_id', 2)
+        self.declare_parameter('servo_id', 3)
         self.declare_parameter('initial_position', 500)
         self.declare_parameter('offset', 0)
         self.declare_parameter('step_size', 1000)
