@@ -12,26 +12,26 @@ class PWMServoController(Node):
         # Control 3 servos with IDs 1, 2, and 3
         self.servo_ids = [1, 2, 3]
 
-        # Declare parameters (same for all)
+        # Declare parameters
         self.declare_parameter('initial_position', 1500)
         self.declare_parameter('offset', 0)
         self.declare_parameter('step_size', 200)
         self.declare_parameter('timer_interval', 0.5)
 
-        # Get parameter values
+        # Get parameters
         self.initial_position = self.get_parameter('initial_position').get_parameter_value().integer_value
         self.offset = self.get_parameter('offset').get_parameter_value().integer_value
         self.step_size = self.get_parameter('step_size').get_parameter_value().integer_value
         self.timer_interval = self.get_parameter('timer_interval').get_parameter_value().double_value
 
-        # ROS publisher
+        # Publisher
         self.publisher = self.create_publisher(SetPWMServoState, '/ros_robot_controller/pwm_servo/set_state', 10)
 
-        # Initialize servo states
+        # Initialize servo state
         self.positions = {sid: self.initial_position for sid in self.servo_ids}
         self.directions = {sid: 1 for sid in self.servo_ids}
 
-        # Timer for updates
+        # Timer for motion updates
         self.timer = self.create_timer(self.timer_interval, self.timer_callback)
 
         # Send initial positions
@@ -39,28 +39,27 @@ class PWMServoController(Node):
 
     def send_servo_positions(self):
         msg = SetPWMServoState()
+        servo_state = PWMServoState()
 
-        for sid in self.servo_ids:
-            servo_state = PWMServoState()
-            servo_state.id = [sid]
-            servo_state.position = [self.positions[sid]]
-            servo_state.offset = [self.offset]
-            msg.state.append(servo_state)
+        # Combine all IDs and positions into one PWMServoState
+        servo_state.id = list(self.positions.keys())
+        servo_state.position = list(self.positions.values())
+        servo_state.offset = [self.offset] * len(self.servo_ids)
+
+        msg.state.append(servo_state)
 
         self.publisher.publish(msg)
         pos_text = ', '.join(f'ID {sid}: {pos}' for sid, pos in self.positions.items())
         self.get_logger().info(f'Sent positions -> {pos_text}')
 
     def timer_callback(self):
-        # Update each servo position
+        # Update each servo’s position and direction
         for sid in self.servo_ids:
             self.positions[sid] += self.directions[sid] * self.step_size
-
             if self.positions[sid] >= 2500 or self.positions[sid] <= 500:
                 self.directions[sid] *= -1
                 self.positions[sid] = max(500, min(self.positions[sid], 2500))
 
-        # Send updated positions to all servos
         self.send_servo_positions()
 
 def main(args=None):
