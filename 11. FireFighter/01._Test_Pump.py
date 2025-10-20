@@ -1,70 +1,55 @@
 #!/usr/bin/env python3
-import RPi.GPIO as GPIO
-import time
+from gpiozero import Servo, DigitalOutputDevice
+from time import sleep, time
 
-# --- Pin setup ---
-SERVO_PIN = 24     # Servo signal pin
-PUMP_PIN = 23      # Pump relay control
+# --- Pins ---
+SERVO_PIN = 24
+PUMP_PIN = 23
 
-# --- Motion settings ---
-CYCLE_SPEED = 0.5       # seconds between servo moves
-MOTION_DURATION = 10.0   # total duration (seconds)
-ANGLE_150 = 150
-ANGLE_170 = 170
-ANGLE_NEUTRAL = 150      # neutral position
-
-# --- Helper function: angle to duty cycle ---
-def angle_to_duty_cycle(angle):
-    """Convert 0–180° to PWM duty cycle (for 50 Hz)"""
-    return 2.5 + (angle / 180.0) * 10.0
+# --- Motion parameters ---
+CYCLE_SPEED = 0.5        # seconds per motion step
+MOTION_DURATION = 10.0   # total duration
+ANGLE_150 = 0.5          # gpiozero servo value for ~150°
+ANGLE_170 = 0.7          # gpiozero servo value for ~170°
+ANGLE_NEUTRAL = 0.5      # neutral/center
 
 def main():
-    # --- Setup GPIO ---
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(SERVO_PIN, GPIO.OUT)
-    GPIO.setup(PUMP_PIN, GPIO.OUT)
-
-    # Servo: 50 Hz PWM
-    servo_pwm = GPIO.PWM(SERVO_PIN, 50)
-    servo_pwm.start(angle_to_duty_cycle(ANGLE_NEUTRAL))
+    # --- Initialize hardware ---
+    servo = Servo(SERVO_PIN)
+    pump = DigitalOutputDevice(PUMP_PIN)
 
     # Turn pump ON
-    GPIO.output(PUMP_PIN, GPIO.HIGH)
-    print("💧 Spray motion started. Pump ON.")
+    pump.on()
+    print("💧 Pump ON. Spray motion started.")
 
-    start_time = time.time()
-    is_up = False
+    start_time = time()
+    is_up_position = False  # start with 150°
 
     try:
-        while (time.time() - start_time) < MOTION_DURATION:
-            # Alternate angles
-            if is_up:
-                target = ANGLE_170
-                is_up = False
+        while (time() - start_time) < MOTION_DURATION:
+            # Alternate servo positions
+            if is_up_position:
+                servo.value = ANGLE_170
+                is_up_position = False
             else:
-                target = ANGLE_150
-                is_up = True
+                servo.value = ANGLE_150
+                is_up_position = True
 
-            duty = angle_to_duty_cycle(target)
-            servo_pwm.ChangeDutyCycle(duty)
-            print(f"→ Servo to {target}° (duty {duty:.2f}%)")
+            print(f"→ Servo moved to {servo.value}")
+            sleep(CYCLE_SPEED)
 
-            time.sleep(CYCLE_SPEED)
-
-        # After motion complete
+        # Motion complete: center servo and turn off pump
         print("✅ Motion complete. Pump OFF. Centering servo...")
-        servo_pwm.ChangeDutyCycle(angle_to_duty_cycle(ANGLE_NEUTRAL))
-        time.sleep(1)
-        GPIO.output(PUMP_PIN, GPIO.LOW)
+        servo.value = ANGLE_NEUTRAL
+        sleep(1)
+        pump.off()
 
     except KeyboardInterrupt:
-        print("⚠️ Interrupted by user. Cleaning up...")
-        GPIO.output(PUMP_PIN, GPIO.LOW)
+        print("⚠️ Interrupted by user. Pump OFF.")
+        pump.off()
 
     finally:
-        servo_pwm.stop()
-        GPIO.cleanup()
-        print("🧹 GPIO cleaned up. Exiting.")
+        print("🧹 Done.")
 
 if __name__ == "__main__":
     main()
