@@ -1,8 +1,3 @@
-
-        #self.declare_parameter('servo_id', 3)   #Servo de direccion en J5?
-        #self.declare_parameter('servo_id', 1)   #camara up and Down
-        #self.declare_parameter('servo_id', 2)   #camara right and left
-        
 #!/usr/bin/env python3
 # encoding: utf-8
 
@@ -67,6 +62,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
 
