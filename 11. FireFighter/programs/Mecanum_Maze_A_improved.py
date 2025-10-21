@@ -248,14 +248,29 @@ def main():
     odom_reader.imu_yaw = imu_reader.yaw
     rclpy.spin_once(odom_reader)
 
+  # ---------------- Automatic Goal Placement ----------------
+    Zone_ID = 1  # <-- Set this dynamically or manually
+
+    # Define goal coordinates based on Zone_ID
+    zone_goals = {
+        1: (5, 5),  # (row, col)
+        2: (3, 4)
+    }
+
+    goal_coord = zone_goals.get(Zone_ID, (5, 5))  # Default if Zone_ID not found
+        
     maze_layout = [
         ["R", "1", "0", "0", "0", "0"],
         ["0", "1", "0", "1", "1", "0"],
         ["0", "0", "0", "1", "0", "0"],
         ["0", "1", "1", "1", "0", "1"],
         ["0", "0", "1", "0", "0", "0"],
-        ["0", "1", "1", "1", "1", "G"]
+        ["0", "1", "1", "1", "1", "0"]
     ]
+
+    # Place the goal automatically
+    gr, gc = goal_coord
+    maze_layout[gr][gc] = "G"
 
     maze, start, goal = parse_map(maze_layout)
     path = bfs_path(maze, start, goal)

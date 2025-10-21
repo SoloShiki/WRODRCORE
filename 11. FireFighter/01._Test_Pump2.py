@@ -10,7 +10,8 @@ docker run -it --rm \
 from gpiozero import LED
 from time import sleep
 
-led = LED(23)
+led = LED(23);
+
 
 try:
     while True:
