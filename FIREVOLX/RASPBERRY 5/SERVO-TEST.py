@@ -9,7 +9,7 @@ class SprayServoController(Node):
 
         # --- Parameters ---
         self.declare_parameter('servo_id', 3)
-        self.declare_parameter('angle_150', 750)   # servo position for ~150
+        self.declare_parameter('angle_150', 700)   # servo position for ~150
         self.declare_parameter('angle_170', 850)   # servo position for ~170
         self.declare_parameter('neutral', 850)
         self.declare_parameter('cycle_speed', 0.3)  # seconds per motion step
