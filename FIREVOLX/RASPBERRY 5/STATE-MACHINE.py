@@ -8,12 +8,15 @@ import paho.mqtt.client as mqtt
 # -----------------------------
 # CONFIGURACI ^sN MQTT
 # -----------------------------
-BROKERS = ["192.168.149.171", "192.168.149.1"]  # Lista de brokers
+BROKERS = ["192.168.149.171", "192.168.149.148"]
 BROKER_PORT = 1883
 TOPIC_FIRE = "alerta/fuego"
 
 # Ruta al script de navegaci  n
 NAVIGATION_SCRIPT = "/home/ubuntu/firevolx_ws/src/firevolx/firevolx/NAVEGATION"
+
+# Ruta al script de activaci  n de bomba
+FIRE_FIGHT_SCRIPT = "/home/ubuntu/firevolx_ws/src/firevolx/firevolx/TEST-MQTT" 
 
 # -----------------------------
 # FireFighterRobot: M  quina de estado
@@ -53,11 +56,11 @@ class FireFighterRobot:
             rpi_id = data.get("rpi_id")
 
             if label in ["fire","cigar", "fireball"]:
-                print(f"[MQTT]  ^=^z  Fuego detectado por {rpi_id}: {label}")
+                print(f"[MQTT] ^=^z Fuego detectado por {rpi_id}: {label}")
                 self.fire_detected = True
                 self.last_rpi = rpi_id
             else:
-                print(f"[MQTT] Mxensaje ignorado de {rpi_id}: {label}")
+                print(f"[MQTT] Mensaje ignorado de {rpi_id}: {label}")
         except Exception as e:
             print("[MQTT] Error procesando mensaje:", e)
 
@@ -96,13 +99,12 @@ class FireFighterRobot:
         print("Fuego confirmado visualmente.")
 
     def fire_fighting_state(self):
-        print("[STATE] FIRE_FIGHTING: Activando bomba de agua...")
-        start_time = time.time()
-        while time.time() - start_time < 10:
-            print("Bomba ON")
-            time.sleep(1)
-        print("Fuego apagado.")
-        print("Bomba OFF")
+        print("[STATE] FIRE_FIGHTING: Activando bomba de agua via MQTT...")
+        try:
+            subprocess.run(["python3", FIRE_FIGHT_SCRIPT], check=True)
+            print("Bomba activada correctamente desde script MQTT.")
+        except Exception as e:
+            print(f"Error ejecutando script de fuego: {e}")
 
     def done_state(self):
         print("[STATE] DONE: Operaci  n completada. Regresando a IDLE.")
@@ -115,6 +117,9 @@ class FireFighterRobot:
 if __name__ == "__main__":
     robot = FireFighterRobot()
     robot.run()
+
+
+
 
 
 
