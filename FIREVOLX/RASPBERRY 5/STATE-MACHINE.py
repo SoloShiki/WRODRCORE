@@ -44,7 +44,7 @@ class FireFighterRobot:
             self.mqtt_clients.append(client)
 
     # -----------------------------
-    # MQTT Callbacks
+    # MQTT Callbacksss
     # -----------------------------
     def on_connect(self, client, userdata, flags, rc):
         print(f"[MQTT] Conectado. Subscrito al t  pico: {TOPIC_FIRE}")
