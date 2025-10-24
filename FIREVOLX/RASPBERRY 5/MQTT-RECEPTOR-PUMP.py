@@ -7,7 +7,7 @@ from time import sleep
 # -----------------------------
 # MQTT CONFIG
 # -----------------------------
-BROKER_IP = "127.0.0.1"  
+BROKER_IP = "127.0.0.1"  # Pi's own IP
 BROKER_PORT = 1883
 TOPIC = "PUMP-TESTX"
 
@@ -45,13 +45,13 @@ def run_pump_cycle():
 
     try:
         while (time.time() - start_time) < MOTION_DURATION:
-            if is_up_position:
+         if is_up_position:
                 servo.value = ANGLE_170
                 is_up_position = False
-            else:
+        else:
                 servo.value = ANGLE_150
                 is_up_position = True
-            sleep(CYCLE_SPEED)
+        sleep(CYCLE_SPEED)
     except KeyboardInterrupt:
         print("âš  Manual interrupt detected. Stopping pump.")
     finally:
@@ -69,7 +69,7 @@ def on_message(client, userdata, msg):
         pump.off()
         servo.value = ANGLE_NEUTRAL
 
-# -----------------------------
+# --X---------------------------
 # MAIN MQTT CLIENT
 # -----------------------------
 client = mqtt.Client(protocol=mqtt.MQTTv311)
