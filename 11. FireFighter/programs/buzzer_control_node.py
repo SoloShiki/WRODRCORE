@@ -1,29 +1,25 @@
-import rclpy
-from rclpy.node import Node
-from ros_robot_controller_msgs.msg import BuzzerState
+#!/usr/bin/env python3
+import time
+from your_sdk_file import Board  # replace with the filename you saved the SDK as, e.g., import sdk
 
-class BuzzerControlNode(Node):
-    def __init__(self):
-        super().__init__('buzzer_control_node')
-        self.buzzer_pub = self.create_publisher(BuzzerState, '/ros_robot_controller/set_buzzer', 10)
-        self.timer = self.create_timer(1.0, self.timer_callback)
+def main():
+    board = Board(device="/dev/ttyUSB1")  # use your USB device
+    board.enable_reception(True)           # start listening to the board
 
-    def timer_callback(self):
-        msg = BuzzerState()
-        msg.freq = 1000
-        msg.on_time = 0.5
-        msg.off_time = 0.5
-        msg.repeat = 5
-        self.buzzer_pub.publish(msg)
-        self.get_logger().info(f'Sent buzzer control message: freq={msg.freq}, on_time={msg.on_time}, off_time={msg.off_time}, repeat={msg.repeat}')
+    # Blink LED 3 times
+    board.set_led(on_time=0.2, off_time=0.2, repeat=3, led_id=1)
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = BuzzerControlNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    # Buzzer beep: 1500Hz, 0.3s on, 0.1s off, repeat 2 times
+    board.set_buzzer(freq=1500, on_time=0.3, off_time=0.1, repeat=2)
 
-if __name__ == '__main__':
+    print("Commands sent, check your board!")
+
+    # Keep the script alive to receive board feedback (optional)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Exiting...")
+
+if __name__ == "__main__":
     main()
-
