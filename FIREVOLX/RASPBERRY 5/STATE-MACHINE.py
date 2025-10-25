@@ -98,7 +98,8 @@ class FireFighterRobot:
     def navigation_state(self):
         print(f"[STATE] NAVIGATION: Ejecutando navegaci  n por {self.last_rpi}...")
         try:
-            subprocess.run(["python3", NAVIGATION_SCRIPT], check=True)
+            #subprocess.run(["python3", NAVIGATION_SCRIPT], check=True)   #changed below
+            subprocess.run(["python3", NAVIGATION_SCRIPT, str(self.last_rpi)], check=True)
         except Exception as e:
             print(f"Error ejecutando navegaci  n: {e}")
 
